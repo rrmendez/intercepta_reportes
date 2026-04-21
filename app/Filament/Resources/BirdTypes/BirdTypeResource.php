@@ -13,7 +13,6 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
-use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
@@ -28,9 +27,11 @@ class BirdTypeResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Catalogs';
+    protected static string|UnitEnum|null $navigationGroup = 'Administration';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 1;
+
+    protected static ?string $navigationLabel = 'Bird Types';
 
     protected static ?string $recordTitleAttribute = 'name';
 

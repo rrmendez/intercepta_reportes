@@ -16,7 +16,6 @@ return new class extends Migration
             $table->string('name');
             $table->string('email')->nullable();
             $table->string('address')->nullable();
-            $table->string('file_id')->nullable();
             $table->boolean('active')->default(true)->index();
             $table->text('notes')->nullable();
             $table->timestamps();

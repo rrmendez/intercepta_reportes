@@ -27,11 +27,13 @@ class SectionResource extends Resource
 {
     protected static ?string $model = Section::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::QueueList;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Reports';
+    protected static string|UnitEnum|null $navigationGroup = 'Business';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 4;
+
+    protected static ?string $navigationLabel = 'Sections';
 
     protected static ?string $recordTitleAttribute = 'title';
 
@@ -45,11 +47,14 @@ class SectionResource extends Resource
                             ->relationship('template', 'name')
                             ->searchable()
                             ->preload()
+                            ->columnSpanFull()
                             ->required(),
                         TextInput::make('title')
+                            ->columnSpanFull()
                             ->required()
                             ->maxLength(255),
                         TextInput::make('order')
+                            ->columnSpanFull()
                             ->numeric()
                             ->integer()
                             ->required()
@@ -57,7 +62,8 @@ class SectionResource extends Resource
                         RichEditor::make('text')
                             ->columnSpanFull(),
                     ])
-                    ->columns(2),
+                    ->columns(1)
+                    ->columnSpanFull(),
             ]);
     }
 

@@ -42,4 +42,13 @@ class Report extends Model
     {
         return $this->belongsTo(Template::class);
     }
+
+    public function getGeneratedFilenameAttribute(): string
+    {
+        if (filled($this->generated_file_path)) {
+            return basename((string) $this->generated_file_path);
+        }
+
+        return 'Report #'.(string) $this->getKey();
+    }
 }

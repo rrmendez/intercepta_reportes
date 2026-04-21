@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\ClientImportMode;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Client extends Model
@@ -11,9 +13,11 @@ class Client extends Model
         'name',
         'email',
         'address',
-        'file_id',
         'active',
         'notes',
+        'import_mode',
+        'default_location_name',
+        'default_bird_type_id',
     ];
 
     /**
@@ -23,7 +27,13 @@ class Client extends Model
     {
         return [
             'active' => 'bool',
+            'import_mode' => ClientImportMode::class,
         ];
+    }
+
+    public function defaultBirdType(): BelongsTo
+    {
+        return $this->belongsTo(BirdType::class, 'default_bird_type_id');
     }
 
     public function locations(): HasMany

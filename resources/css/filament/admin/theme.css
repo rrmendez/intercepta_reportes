@@ -1,0 +1,41 @@
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+@source '../../../../app/Filament/**/*';
+@source '../../../../resources/views/filament/**/*';
+@source '../../../../resources/views/components/**/*';
+@source '../../../../resources/views/pdf/**/*';
+@source '../../../../app/Livewire/**/*';
+
+@layer components {
+    .fi-sc-wizard .fi-sc-wizard-footer {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        gap: 0.75rem;
+    }
+
+    .fi-sc-wizard .fi-sc-wizard-footer > * {
+        width: auto;
+    }
+
+    .fi-sc-wizard .fi-sc-wizard-footer > :nth-child(2) {
+        margin-inline-end: auto;
+    }
+
+    .fi-sc-wizard .fi-sc-wizard-footer > :nth-child(3),
+    .fi-sc-wizard .fi-sc-wizard-footer > :nth-child(4) {
+        margin-inline-start: auto;
+    }
+
+    .fi-sc-wizard .fi-sc-wizard-header-step-icon-ctn > .fi-icon:first-of-type {
+        display: none;
+    }
+
+    .fi-sc-wizard .fi-sc-wizard-header-step.fi-completed .fi-sc-wizard-header-step-icon-ctn > .fi-icon:first-of-type {
+        display: inline-flex;
+    }
+
+    .fi-sc-wizard .fi-sc-wizard-header-step.fi-completed .fi-sc-wizard-header-step-icon-ctn > .fi-icon:last-of-type {
+        display: none;
+    }
+}

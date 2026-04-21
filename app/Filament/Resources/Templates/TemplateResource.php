@@ -31,11 +31,13 @@ class TemplateResource extends Resource
 {
     protected static ?string $model = Template::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::DocumentText;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Reports';
+    protected static string|UnitEnum|null $navigationGroup = 'Business';
 
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 3;
+
+    protected static ?string $navigationLabel = 'Templates';
 
     protected static ?string $recordTitleAttribute = 'name';
 

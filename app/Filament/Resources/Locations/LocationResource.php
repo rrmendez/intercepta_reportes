@@ -29,9 +29,11 @@ class LocationResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::MapPin;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Catalogs';
+    protected static string|UnitEnum|null $navigationGroup = 'Business';
 
     protected static ?int $navigationSort = 2;
+
+    protected static ?string $navigationLabel = 'Locations';
 
     protected static ?string $recordTitleAttribute = 'name';
 

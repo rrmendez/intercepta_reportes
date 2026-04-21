@@ -15,7 +15,6 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
-use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
@@ -28,11 +27,13 @@ class ClientResource extends Resource
 {
     protected static ?string $model = Client::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::UserGroup;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::BuildingOffice2;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Catalogs';
+    protected static string|UnitEnum|null $navigationGroup = 'Business';
 
     protected static ?int $navigationSort = 1;
+
+    protected static ?string $navigationLabel = 'Clients';
 
     protected static ?string $recordTitleAttribute = 'name';
 
@@ -43,16 +44,16 @@ class ClientResource extends Resource
                 TextInput::make('name')
                     ->label('Company Name')
                     ->required()
+                    ->columnSpanFull()
                     ->maxLength(255),
                 TextInput::make('email')
                     ->label('Email')
                     ->email()
-                    ->maxLength(255),
-                TextInput::make('file_id')
-                    ->label('File ID')
+                    ->columnSpanFull()
                     ->maxLength(255),
                 TextInput::make('address')
                     ->label('Address')
+                    ->columnSpanFull()
                     ->maxLength(255),
                 Textarea::make('notes')
                     ->label('Notes')
@@ -61,6 +62,7 @@ class ClientResource extends Resource
                 Toggle::make('active')
                     ->label('Active')
                     ->default(true)
+                    ->columnSpanFull()
                     ->required(),
             ]);
     }
@@ -76,9 +78,6 @@ class ClientResource extends Resource
                 TextColumn::make('email')
                     ->searchable()
                     ->toggleable(),
-                TextColumn::make('file_id')
-                    ->label('File ID')
-                    ->searchable(),
                 IconColumn::make('active')
                     ->boolean()
                     ->sortable(),

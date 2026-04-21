@@ -2,8 +2,6 @@
 
 namespace App\Filament\Resources\Reports;
 
-use App\Filament\Resources\Reports\Pages\CreateReport;
-use App\Filament\Resources\Reports\Pages\EditReport;
 use App\Filament\Resources\Reports\Pages\ListReports;
 use App\Models\Report;
 use App\ReportStatus;
@@ -11,9 +9,7 @@ use BackedEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
 use Filament\Forms\Components\DateTimePicker;
-use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -24,19 +20,23 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 use UnitEnum;
 
 class ReportResource extends Resource
 {
     protected static ?string $model = Report::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::DocumentChartBar;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Reports';
+    protected static string|UnitEnum|null $navigationGroup = 'Business';
 
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 6;
 
-    protected static ?string $recordTitleAttribute = 'id';
+    protected static ?string $navigationLabel = 'Reports';
+
+    protected static ?string $recordTitleAttribute = 'generated_filename';
 
     public static function form(Schema $schema): Schema
     {
@@ -73,10 +73,6 @@ class ReportResource extends Resource
                         TextInput::make('generated_file_path')
                             ->maxLength(255)
                             ->columnSpanFull(),
-                        Placeholder::make('summary')
-                            ->label('Summary (JSON)')
-                            ->content(fn (?Report $record): string => $record?->data ? json_encode($record->data, JSON_PRETTY_PRINT) ?: '' : '-')
-                            ->columnSpanFull(),
                         Textarea::make('data')
                             ->dehydrated(false)
                             ->disabled()
@@ -90,21 +86,29 @@ class ReportResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->recordTitleAttribute('id')
+            ->recordTitleAttribute('generated_filename')
+            ->recordUrl(function (Report $record): string {
+                if (blank($record->generated_file_path)) {
+                    return static::getUrl('edit', ['record' => $record]);
+                }
+
+                return Storage::disk('local')->temporaryUrl(
+                    $record->generated_file_path,
+                    now()->addMinutes(10),
+                );
+            })
+            ->openRecordUrlInNewTab()
             ->columns([
                 TextColumn::make('client.name')
                     ->label('Client')
+                    ->description(fn (Report $record): ?string => filled($record->generated_file_path) ? basename((string) $record->generated_file_path) : null)
                     ->searchable()
-                    ->sortable(),
-                TextColumn::make('month')
-                    ->sortable(),
-                TextColumn::make('year')
                     ->sortable(),
                 TextColumn::make('status')
                     ->badge()
                     ->formatStateUsing(fn (ReportStatus|string|null $state): string => $state instanceof ReportStatus ? $state->label() : (ReportStatus::tryFrom((string) $state)?->label() ?? (string) $state)),
                 TextColumn::make('generated_at')
-                    ->dateTime('Y-m-d H:i')
+                    ->dateTime('Y-m-d')
                     ->sortable(),
             ])
             ->filters([
@@ -124,7 +128,6 @@ class ReportResource extends Resource
                     ),
             ])
             ->recordActions([
-                EditAction::make(),
                 DeleteAction::make(),
             ])
             ->toolbarActions([
@@ -141,12 +144,24 @@ class ReportResource extends Resource
         ];
     }
 
+    public static function getGloballySearchableAttributes(): array
+    {
+        return [
+            'generated_file_path',
+            'client.name',
+        ];
+    }
+
+    public static function getGlobalSearchResultTitle(Model $record): string
+    {
+        /** @var Report $record */
+        return $record->generated_filename;
+    }
+
     public static function getPages(): array
     {
         return [
             'index' => ListReports::route('/'),
-            'create' => CreateReport::route('/create'),
-            'edit' => EditReport::route('/{record}/edit'),
         ];
     }
 }

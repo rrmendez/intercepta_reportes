@@ -14,7 +14,6 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
-use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
@@ -27,11 +26,13 @@ class EmployeeResource extends Resource
 {
     protected static ?string $model = Employee::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::User;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::Identification;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Catalogs';
+    protected static string|UnitEnum|null $navigationGroup = 'Administration';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?int $navigationSort = 2;
+
+    protected static ?string $navigationLabel = 'Employees';
 
     protected static ?string $recordTitleAttribute = 'name';
 
@@ -39,27 +40,27 @@ class EmployeeResource extends Resource
     {
         return $schema
             ->components([
-                        TextInput::make('name')
-                            ->required()
-                            ->maxLength(255),
-                        TextInput::make('email')
-                            ->email()
-                            ->unique(ignoreRecord: true)
-                            ->maxLength(255),
-                        TextInput::make('phone')
-                            ->tel()
-                            ->maxLength(255),
-                        TextInput::make('document_number')
-                            ->unique(ignoreRecord: true)
-                            ->maxLength(255),
-                        DatePicker::make('birthday'),
-                        Textarea::make('address')
-                            ->rows(2)
-                            ->columnSpanFull(),
-                        Toggle::make('active')
-                            ->default(true)
-                            ->required(),
-                    ]);
+                TextInput::make('name')
+                    ->required()
+                    ->maxLength(255),
+                TextInput::make('email')
+                    ->email()
+                    ->unique(ignoreRecord: true)
+                    ->maxLength(255),
+                TextInput::make('phone')
+                    ->tel()
+                    ->maxLength(255),
+                TextInput::make('document_number')
+                    ->unique(ignoreRecord: true)
+                    ->maxLength(255),
+                DatePicker::make('birthday'),
+                Textarea::make('address')
+                    ->rows(2)
+                    ->columnSpanFull(),
+                Toggle::make('active')
+                    ->default(true)
+                    ->required(),
+            ]);
     }
 
     public static function table(Table $table): Table

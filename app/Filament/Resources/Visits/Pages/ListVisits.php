@@ -2,7 +2,9 @@
 
 namespace App\Filament\Resources\Visits\Pages;
 
+use App\Filament\Pages\ImportVisitReports;
 use App\Filament\Resources\Visits\VisitResource;
+use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
 
@@ -14,6 +16,10 @@ class ListVisits extends ListRecords
     {
         return [
             CreateAction::make(),
+            Action::make('import')
+                ->label('Import Visits')
+                ->icon('heroicon-o-arrow-up-tray')
+                ->url(ImportVisitReports::getUrl()),
         ];
     }
 }

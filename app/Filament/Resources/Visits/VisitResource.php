@@ -37,11 +37,13 @@ class VisitResource extends Resource
 {
     protected static ?string $model = Visit::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::CalendarDays;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Operations';
+    protected static string|UnitEnum|null $navigationGroup = 'Business';
 
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 5;
+
+    protected static ?string $navigationLabel = 'Visits';
 
     protected static ?string $recordTitleAttribute = 'id';
 
@@ -170,7 +172,7 @@ class VisitResource extends Resource
                     }),
                 TextColumn::make('visit_reports_count')
                     ->counts('visitReports')
-                    ->label('Details'),
+                    ->label('Quantity'),
                 TextColumn::make('observation')
                     ->limit(40)
                     ->toggleable(isToggledHiddenByDefault: true),
