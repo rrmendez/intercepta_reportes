@@ -33,7 +33,7 @@ class LocationResource extends Resource
 
     protected static ?int $navigationSort = 2;
 
-    protected static ?string $navigationLabel = 'Locations';
+    protected static ?string $navigationLabel = 'Sections';
 
     protected static ?string $recordTitleAttribute = 'name';
 
@@ -107,5 +107,15 @@ class LocationResource extends Resource
         return [
             'index' => ListLocations::route('/'),
         ];
+    }
+
+    public static function getModelLabel(): string
+    {
+        return 'section';
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return 'sections';
     }
 }

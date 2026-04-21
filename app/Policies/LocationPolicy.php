@@ -47,7 +47,13 @@ class LocationPolicy
      */
     public function delete(User $user, Location $location): bool
     {
-        return $this->isAdmin($user);
+        if (! $this->isAdmin($user)) {
+            return false;
+        }
+
+        return Location::query()
+            ->where('client_id', $location->client_id)
+            ->count() > 1;
     }
 
     /**

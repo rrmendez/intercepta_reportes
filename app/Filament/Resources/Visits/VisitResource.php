@@ -85,7 +85,7 @@ class VisitResource extends Resource
                             ->relationship()
                             ->schema([
                                 Select::make('location_id')
-                                    ->label('Location')
+                                    ->label('Section')
                                     ->options(fn (Get $get): array => Location::query()
                                         ->where('client_id', $get('../../client_id'))
                                         ->where('active', true)

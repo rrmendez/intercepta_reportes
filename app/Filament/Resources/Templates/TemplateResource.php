@@ -73,9 +73,10 @@ class TemplateResource extends Resource
                             ->columnSpanFull(),
                     ])
                     ->columns(2),
-                Section::make('Sections')
+                Section::make('Segments')
                     ->schema([
                         Repeater::make('sections')
+                            ->hiddenLabel()
                             ->relationship()
                             ->orderColumn('order')
                             ->schema([
@@ -95,7 +96,7 @@ class TemplateResource extends Resource
                             ->columns(1)
                             ->reorderableWithButtons()
                             ->defaultItems(0)
-                            ->addActionLabel('Add Section')
+                            ->addActionLabel('Add Segment')
                             ->columnSpanFull(),
                     ]),
             ]);
@@ -118,7 +119,7 @@ class TemplateResource extends Resource
                     ->sortable(),
                 TextColumn::make('sections_count')
                     ->counts('sections')
-                    ->label('Sections'),
+                    ->label('Segments'),
             ])
             ->filters([
                 SelectFilter::make('client')

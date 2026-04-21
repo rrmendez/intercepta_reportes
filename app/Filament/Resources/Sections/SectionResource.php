@@ -33,7 +33,7 @@ class SectionResource extends Resource
 
     protected static ?int $navigationSort = 4;
 
-    protected static ?string $navigationLabel = 'Sections';
+    protected static ?string $navigationLabel = 'Segments';
 
     protected static ?string $recordTitleAttribute = 'title';
 
@@ -41,7 +41,7 @@ class SectionResource extends Resource
     {
         return $schema
             ->components([
-                FormSection::make('Section Data')
+                FormSection::make('Segment Data')
                     ->schema([
                         Select::make('template_id')
                             ->relationship('template', 'name')
@@ -110,5 +110,15 @@ class SectionResource extends Resource
             'create' => CreateSection::route('/create'),
             'edit' => EditSection::route('/{record}/edit'),
         ];
+    }
+
+    public static function getModelLabel(): string
+    {
+        return 'segment';
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return 'segments';
     }
 }
