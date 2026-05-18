@@ -12,14 +12,13 @@ use App\Services\VisitImport\VisitImportPayload;
 use App\VisitStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Validation\Validator as ValidatorContract;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Throwable;
 
 class VisitImportPersistence
 {
-    private const int MAX_PREVIEW_ERRORS = 20;
+    private const int MAX_PREVIEW_ERRORS = 100;
 
     /**
      * @return array{total_rows: int, valid_rows: int, invalid_rows: int, errors: array<int, string>}
@@ -49,10 +48,10 @@ class VisitImportPersistence
             }
 
             $existingErrorForRow = collect($errors)
-                ->first(fn (string $error): bool => str_starts_with($error, 'Row '.$rowNumber.':'));
+                ->first(fn (string $error): bool => str_starts_with($error, 'Fila '.$rowNumber.':'));
 
             if (! is_string($existingErrorForRow)) {
-                $errors[] = 'Row '.$rowNumber.': '.($validationResult['errors'][0] ?? 'Invalid row data.');
+                $errors[] = 'Fila '.$rowNumber.': '.($validationResult['errors'][0] ?? 'Datos de fila invalidos.');
             }
         }
 
@@ -72,7 +71,7 @@ class VisitImportPersistence
     /**
      * @return array{status: string, total_rows: int, persisted_rows: int, skipped_rows: int}
      */
-    public function persist(VisitImportPayload $payload): array
+    public function persist(VisitImportPayload $payload, ?int $visitImportId = null): array
     {
         $totalRows = $payload->totalSourceRows();
         $persistedSourceRows = [];
@@ -89,56 +88,53 @@ class VisitImportPersistence
             $dateInit = $validationResult['date_init'];
             $dateEnd = $validationResult['date_end'] ?? $dateInit;
 
-            try {
-                DB::transaction(function () use ($data, $dateInit, $dateEnd): void {
-                    $client = Client::query()->firstOrCreate(
-                        ['name' => $data['client_name']],
-                        ['active' => true],
-                    );
+            $client = Client::query()->firstOrCreate(
+                ['name' => $data['client_name']],
+                ['active' => true],
+            );
 
-                    $employee = $this->resolveEmployee($data);
+            $employee = $this->resolveEmployee($data);
 
-                    $location = Location::query()->firstOrCreate(
-                        [
-                            'client_id' => $client->id,
-                            'name' => $data['location_name'],
-                        ],
-                        ['active' => true],
-                    );
+            $location = Location::query()->firstOrCreate(
+                [
+                    'client_id' => $client->id,
+                    'name' => $data['location_name'],
+                ],
+                ['active' => true],
+            );
 
-                    $birdType = BirdType::query()->firstOrCreate(
-                        ['name' => $data['bird_type_name']],
-                        ['active' => true],
-                    );
+            $birdType = BirdType::query()->firstOrCreate(
+                ['name' => $data['bird_type_name']],
+                ['active' => true],
+            );
 
-                    $status = $this->resolveStatus($data['status']);
+            $status = $this->resolveStatus($data['status']);
 
-                    $visit = Visit::query()->firstOrCreate(
-                        [
-                            'client_id' => $client->id,
-                            'employee_id' => $employee->id,
-                            'date_init' => $dateInit,
-                            'date_end' => $dateEnd,
-                            'status' => $status->value,
-                        ],
-                        [
-                            'observation' => $data['visit_observation'],
-                        ],
-                    );
+            $visit = Visit::query()->firstOrCreate(
+                [
+                    'client_id' => $client->id,
+                    'employee_id' => $employee->id,
+                    'date_init' => $dateInit,
+                    'date_end' => $dateEnd,
+                    'status' => $status->value,
+                ],
+                [
+                    'observation' => $data['visit_observation'],
+                    'visit_import_id' => $visitImportId,
+                ],
+            );
 
-                    VisitReport::query()->create([
-                        'visit_id' => $visit->id,
-                        'location_id' => $location->id,
-                        'bird_type_id' => $birdType->id,
-                        'quantity' => (int) $data['quantity'],
-                        'observation' => $data['observation'],
-                    ]);
-                });
-            } catch (Throwable $exception) {
-                report($exception);
-
-                continue;
+            if ($visitImportId !== null) {
+                Visit::query()->whereKey($visit->id)->update(['visit_import_id' => $visitImportId]);
             }
+
+            VisitReport::query()->create([
+                'visit_id' => $visit->id,
+                'location_id' => $location->id,
+                'bird_type_id' => $birdType->id,
+                'quantity' => (int) $data['quantity'],
+                'observation' => $data['observation'],
+            ]);
 
             $persistedSourceRows[$sourceRowIndex] = true;
         }
@@ -176,7 +172,7 @@ class VisitImportPersistence
         if (! $dateInit instanceof CarbonImmutable) {
             return [
                 'is_valid' => false,
-                'errors' => ['Invalid start date format.'],
+                'errors' => ['Formato de fecha de inicio invalido.'],
                 'date_init' => null,
                 'date_end' => null,
             ];

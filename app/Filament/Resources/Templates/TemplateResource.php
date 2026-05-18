@@ -31,13 +31,15 @@ class TemplateResource extends Resource
 {
     protected static ?string $model = Template::class;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::DocumentText;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Business';
+    protected static string|UnitEnum|null $navigationGroup = 'Operaciones';
 
     protected static ?int $navigationSort = 3;
 
-    protected static ?string $navigationLabel = 'Templates';
+    protected static ?string $navigationLabel = 'Plantillas';
 
     protected static ?string $recordTitleAttribute = 'name';
 
@@ -45,21 +47,24 @@ class TemplateResource extends Resource
     {
         return $schema
             ->components([
-                Section::make('Template Data')
+                Section::make('Datos de la plantilla')
                     ->schema([
                         Select::make('client_id')
+                            ->label('Cliente')
                             ->relationship('client', 'name')
                             ->searchable()
                             ->preload()
                             ->required(),
                         TextInput::make('name')
+                            ->label('Nombre')
                             ->required()
                             ->maxLength(255),
                         Toggle::make('active')
+                            ->label('Activo')
                             ->default(true)
                             ->required(),
                         RichEditor::make('content')
-                            ->label('General Content')
+                            ->label('Contenido general')
                             ->toolbarButtons([
                                 'bold',
                                 'italic',
@@ -73,7 +78,7 @@ class TemplateResource extends Resource
                             ->columnSpanFull(),
                     ])
                     ->columns(2),
-                Section::make('Segments')
+                Section::make('Segmentos')
                     ->schema([
                         Repeater::make('sections')
                             ->hiddenLabel()
@@ -81,9 +86,11 @@ class TemplateResource extends Resource
                             ->orderColumn('order')
                             ->schema([
                                 TextInput::make('title')
+                                    ->label('Titulo')
                                     ->required()
                                     ->maxLength(255),
                                 RichEditor::make('text')
+                                    ->label('Texto')
                                     ->toolbarButtons([
                                         'bold',
                                         'italic',
@@ -96,7 +103,7 @@ class TemplateResource extends Resource
                             ->columns(1)
                             ->reorderableWithButtons()
                             ->defaultItems(0)
-                            ->addActionLabel('Add Segment')
+                            ->addActionLabel('Agregar segmento')
                             ->columnSpanFull(),
                     ]),
             ]);
@@ -108,21 +115,24 @@ class TemplateResource extends Resource
             ->recordTitleAttribute('name')
             ->columns([
                 TextColumn::make('client.name')
-                    ->label('Client')
+                    ->label('Cliente')
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('name')
+                    ->label('Nombre')
                     ->searchable()
                     ->sortable(),
                 IconColumn::make('active')
+                    ->label('Activo')
                     ->boolean()
                     ->sortable(),
                 TextColumn::make('sections_count')
                     ->counts('sections')
-                    ->label('Segments'),
+                    ->label('Segmentos'),
             ])
             ->filters([
                 SelectFilter::make('client')
+                    ->label('Cliente')
                     ->relationship('client', 'name'),
                 TernaryFilter::make('active'),
             ])
@@ -142,6 +152,16 @@ class TemplateResource extends Resource
         return [
             //
         ];
+    }
+
+    public static function getModelLabel(): string
+    {
+        return 'plantilla';
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return 'plantillas';
     }
 
     public static function getPages(): array

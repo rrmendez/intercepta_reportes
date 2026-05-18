@@ -1,15 +1,126 @@
 @php
-    /** @var array{success: bool, message: string, imported_files: int, expected_files: int, total_rows: int, persisted_rows: int, skipped_rows: int, duration_seconds: float, file_errors: array<int, string>} $result */
+    /** @var array{processed: bool, success: bool, queued?: bool, message: string, imported_files: int, expected_files: int, total_rows: int, persisted_rows: int, skipped_rows: int, duration_seconds: float, file_errors: array<int, string>, import_warnings: array<int, string>} $result */
     /** @var string $finishUrl */
     /** @var string $listVisitsUrl */
+    /** @var string $visitImportsUrl */
+    $isQueued = ($result['queued'] ?? false) === true;
     $durationLabel = number_format($result['duration_seconds'], $result['duration_seconds'] >= 10 ? 0 : 1).'s';
 @endphp
 
-@if (! $result['success'])
-    <div class="rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800 dark:border-yellow-500/40 dark:bg-yellow-500/10 dark:text-yellow-200">
-        No successful import was registered yet.
+@if ($result['processed'] && ! $result['success'])
+    <div class="space-y-4 rounded-xl border border-rose-200 bg-rose-50/80 p-6 text-left dark:border-rose-500/35 dark:bg-rose-950/30">
+        <h3 class="text-lg font-semibold text-rose-900 dark:text-rose-100">
+            No se pudo completar la importacion
+        </h3>
+        <p class="text-sm leading-relaxed whitespace-pre-line text-rose-800 dark:text-rose-100/90">
+            {{ $result['message'] !== '' ? $result['message'] : 'Revisa los archivos e intenta de nuevo.' }}
+        </p>
+        <div class="flex flex-wrap gap-3 pt-2">
+            <x-filament::button
+                tag="a"
+                :href="$finishUrl"
+                color="gray"
+                outlined
+            >
+                Volver al inicio
+            </x-filament::button>
+        </div>
     </div>
-@else
+@elseif ($result['processed'] && $result['success'] && $isQueued)
+    <div class="relative overflow-hidden px-6 py-8 text-center sm:px-10 sm:py-12">
+        <div class="pointer-events-none absolute inset-0 opacity-70 dark:opacity-40">
+            <div class="absolute -top-28 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-sky-400/25 blur-3xl dark:bg-sky-400/20"></div>
+            <div class="absolute bottom-0 left-0 h-40 w-40 rounded-full bg-cyan-400/15 blur-2xl dark:bg-cyan-400/10"></div>
+        </div>
+
+        <div class="relative">
+            <div class="mx-auto mb-8 grid h-28 w-28 place-items-center rounded-2xl border border-sky-300/35 bg-gradient-to-b from-sky-200/55 to-sky-100/30 dark:border-sky-300/20 dark:from-sky-300/20 dark:to-sky-500/10">
+                <span class="inline-flex h-14 w-14 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg shadow-sky-500/35" title="En cola">
+                    <svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 6v6l4 2" />
+                        <circle cx="12" cy="12" r="10" />
+                    </svg>
+                </span>
+            </div>
+
+            <h2 class="text-4xl leading-tight font-extrabold tracking-tight text-slate-900 sm:text-5xl dark:text-slate-100">
+                Importacion en proceso
+            </h2>
+
+            <p class="mx-auto mt-4 max-w-2xl whitespace-pre-line text-base text-slate-600 sm:text-lg dark:text-slate-300/90">
+                {{ $result['message'] }}
+            </p>
+
+            <div class="mx-auto mt-8 grid max-w-3xl grid-cols-1 rounded-2xl border border-slate-200 bg-white/85 p-2 shadow-sm sm:grid-cols-3 sm:p-4 dark:border-slate-700/80 dark:bg-[#030b21]/80">
+                <div class="py-4 sm:border-r sm:border-slate-200 dark:sm:border-slate-700/70">
+                    <p class="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">Archivos enviados</p>
+                    <p class="mt-1 text-4xl font-bold text-sky-500">{{ $result['imported_files'] }}</p>
+                </div>
+                <div class="py-4 sm:border-r sm:border-slate-200 dark:sm:border-slate-700/70">
+                    <p class="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">Filas detectadas</p>
+                    <p class="mt-1 text-4xl font-bold text-slate-900 dark:text-slate-100">{{ number_format($result['total_rows']) }}</p>
+                </div>
+                <div class="py-4">
+                    <p class="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">Duracion</p>
+                    <p class="mt-1 text-4xl font-bold text-slate-900 dark:text-slate-100">{{ $durationLabel }}</p>
+                </div>
+            </div>
+
+            @if ($result['file_errors'] !== [])
+                <div class="mx-auto mt-5 max-w-3xl rounded-xl border border-rose-200 bg-rose-50 p-4 text-left dark:border-rose-300/30 dark:bg-rose-500/10">
+                    <p class="mb-2 text-xs font-semibold tracking-[0.14em] text-rose-700 uppercase dark:text-rose-200">Errores</p>
+                    <ul class="space-y-1">
+                        @foreach (collect($result['file_errors'])->take(3) as $error)
+                            <li class="text-sm text-rose-700 dark:text-rose-100/95">{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            @if (($result['import_warnings'] ?? []) !== [])
+                <div class="mx-auto mt-5 max-w-3xl rounded-xl border border-amber-200 bg-amber-50 p-4 text-left dark:border-amber-300/30 dark:bg-amber-500/10">
+                    <p class="mb-2 text-xs font-semibold tracking-[0.14em] text-amber-800 uppercase dark:text-amber-200">Advertencias</p>
+                    <ul class="space-y-1">
+                        @foreach (collect($result['import_warnings'])->take(8) as $warning)
+                            <li class="text-sm text-amber-900 dark:text-amber-100/95">{{ $warning }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            <div class="mt-9 flex flex-wrap items-center justify-center gap-3">
+                <x-filament::button
+                    tag="a"
+                    :href="$visitImportsUrl"
+                    color="primary"
+                    size="xl"
+                >
+                    Ver importaciones
+                </x-filament::button>
+
+                <x-filament::button
+                    tag="a"
+                    :href="$listVisitsUrl"
+                    color="gray"
+                    outlined
+                    size="xl"
+                >
+                    Ver visitas
+                </x-filament::button>
+
+                <x-filament::button
+                    tag="a"
+                    :href="$finishUrl"
+                    color="warning"
+                    outlined
+                    size="xl"
+                >
+                    Finalizar
+                </x-filament::button>
+            </div>
+        </div>
+    </div>
+@elseif ($result['processed'] && $result['success'])
     <div class="relative overflow-hidden px-6 py-8 text-center sm:px-10 sm:py-12">
         <div class="pointer-events-none absolute inset-0 opacity-70 dark:opacity-40">
             <div class="absolute -top-28 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-amber-400/25 blur-3xl dark:bg-amber-400/20"></div>
@@ -26,34 +137,45 @@
             </div>
 
             <h2 class="text-4xl leading-tight font-extrabold tracking-tight text-slate-900 sm:text-5xl dark:text-slate-100">
-                Import Completed Successfully
+                Importacion completada correctamente
             </h2>
 
-            <p class="mx-auto mt-4 max-w-2xl text-base text-slate-600 sm:text-lg dark:text-slate-300/90">
-                Your dataset was parsed, validated, and committed successfully.
+            <p class="mx-auto mt-4 max-w-2xl whitespace-pre-line text-base text-slate-600 sm:text-lg dark:text-slate-300/90">
+                {{ $result['message'] }}
             </p>
 
             <div class="mx-auto mt-8 grid max-w-3xl grid-cols-1 rounded-2xl border border-slate-200 bg-white/85 p-2 shadow-sm sm:grid-cols-3 sm:p-4 dark:border-slate-700/80 dark:bg-[#030b21]/80">
                 <div class="py-4 sm:border-r sm:border-slate-200 dark:sm:border-slate-700/70">
-                    <p class="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">Total Files</p>
+                    <p class="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">Archivos</p>
                     <p class="mt-1 text-4xl font-bold text-amber-300">{{ $result['imported_files'] }}</p>
                 </div>
                 <div class="py-4 sm:border-r sm:border-slate-200 dark:sm:border-slate-700/70">
-                    <p class="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">Total Rows</p>
+                    <p class="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">Filas</p>
                     <p class="mt-1 text-4xl font-bold text-slate-900 dark:text-slate-100">{{ number_format($result['total_rows']) }}</p>
                 </div>
                 <div class="py-4">
-                    <p class="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">Duration</p>
+                    <p class="text-xs font-semibold tracking-[0.2em] text-slate-500 uppercase dark:text-slate-400">Duracion</p>
                     <p class="mt-1 text-4xl font-bold text-slate-900 dark:text-slate-100">{{ $durationLabel }}</p>
                 </div>
             </div>
 
             @if ($result['file_errors'] !== [])
                 <div class="mx-auto mt-5 max-w-3xl rounded-xl border border-rose-200 bg-rose-50 p-4 text-left dark:border-rose-300/30 dark:bg-rose-500/10">
-                    <p class="mb-2 text-xs font-semibold tracking-[0.14em] text-rose-700 uppercase dark:text-rose-200">Imported with warnings</p>
+                    <p class="mb-2 text-xs font-semibold tracking-[0.14em] text-rose-700 uppercase dark:text-rose-200">Importado con advertencias</p>
                     <ul class="space-y-1">
                         @foreach (collect($result['file_errors'])->take(3) as $error)
                             <li class="text-sm text-rose-700 dark:text-rose-100/95">{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            @if (($result['import_warnings'] ?? []) !== [])
+                <div class="mx-auto mt-5 max-w-3xl rounded-xl border border-amber-200 bg-amber-50 p-4 text-left dark:border-amber-300/30 dark:bg-amber-500/10">
+                    <p class="mb-2 text-xs font-semibold tracking-[0.14em] text-amber-800 uppercase dark:text-amber-200">Advertencias de validacion del archivo</p>
+                    <ul class="space-y-1">
+                        @foreach (collect($result['import_warnings'])->take(8) as $warning)
+                            <li class="text-sm text-amber-900 dark:text-amber-100/95">{{ $warning }}</li>
                         @endforeach
                     </ul>
                 </div>
@@ -66,7 +188,7 @@
                     color="warning"
                     size="xl"
                 >
-                    Finish
+                    Finalizar
                 </x-filament::button>
 
                 <x-filament::button
@@ -76,7 +198,7 @@
                     outlined
                     size="xl"
                 >
-                    View Records
+                    Ver registros
                 </x-filament::button>
             </div>
         </div>

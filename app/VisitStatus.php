@@ -12,10 +12,10 @@ enum VisitStatus: string
     public function label(): string
     {
         return match ($this) {
-            self::Scheduled => 'Scheduled',
-            self::InProgress => 'In Progress',
-            self::Completed => 'Completed',
-            self::Cancelled => 'Cancelled',
+            self::Scheduled => 'Programada',
+            self::InProgress => 'En progreso',
+            self::Completed => 'Completada',
+            self::Cancelled => 'Cancelada',
         };
     }
 

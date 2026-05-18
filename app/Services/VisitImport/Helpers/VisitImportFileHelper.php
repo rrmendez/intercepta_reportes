@@ -16,51 +16,81 @@ class VisitImportFileHelper
 
     /**
      * @param  array<int, mixed>  $files
-     * @return array<int, array{file_name: string, file_path: string, can_import: bool, total_rows: int, valid_rows: int, invalid_rows: int, errors: array<int, string>}>
+     * @param  array{provision_client_and_sections?: bool, replace_previous_import_same_filename?: bool}  $context
+     * @return array<int, array{file_name: string, display_file_name: string, file_path: string, can_import: bool, total_rows: int, valid_rows: int, invalid_rows: int, errors: array<int, string>, warnings: array<int, string>}>
      */
-    public function verifyFiles(array $files): array
+    public function verifyFiles(array $files, array $context = []): array
     {
         return collect($files)
-            ->map(function (mixed $file): array {
+            ->map(function (mixed $file) use ($context): array {
                 [$filePath, $fileName] = $this->normalizeFileForImport($file);
 
                 try {
                     $preview = $this->importVisitExcelService->preview(
                         Storage::disk('local')->path($filePath),
+                        null,
+                        $context,
                     );
 
                     return [
                         'file_name' => $fileName,
+                        'display_file_name' => $this->displayFileNameForImportUi($filePath, $fileName),
                         'file_path' => $filePath,
                         'can_import' => $preview['valid_rows'] > 0,
                         'total_rows' => $preview['total_rows'],
                         'valid_rows' => $preview['valid_rows'],
                         'invalid_rows' => $preview['invalid_rows'],
                         'errors' => $preview['errors'],
+                        'warnings' => $preview['warnings'] ?? [],
                     ];
                 } catch (ValidationException $exception) {
                     return [
                         'file_name' => $fileName,
+                        'display_file_name' => $this->displayFileNameForImportUi($filePath, $fileName),
                         'file_path' => $filePath,
                         'can_import' => false,
                         'total_rows' => 0,
                         'valid_rows' => 0,
                         'invalid_rows' => 0,
                         'errors' => [$this->getFirstValidationError($exception)],
+                        'warnings' => [],
                     ];
                 } catch (Throwable $exception) {
                     report($exception);
 
                     return [
                         'file_name' => $fileName,
+                        'display_file_name' => $this->displayFileNameForImportUi($filePath, $fileName),
                         'file_path' => $filePath,
                         'can_import' => false,
                         'total_rows' => 0,
                         'valid_rows' => 0,
                         'invalid_rows' => 0,
-                        'errors' => ['Unexpected error while validating file.'],
+                        'errors' => ['Error inesperado al validar el archivo.'],
+                        'warnings' => [],
                     ];
                 }
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, mixed>  $files
+     * @return array<int, array{file_name: string, hint: array<string, mixed>}>
+     */
+    public function compactClientProvisioningHintsForFiles(array $files): array
+    {
+        return collect($files)
+            ->map(function (mixed $file): array {
+                [$filePath, $fileName] = $this->normalizeFileForImport($file);
+                $absolutePath = Storage::disk('local')->path($filePath);
+                $hint = $this->importVisitExcelService->compactClientProvisioningHintFromPath($absolutePath);
+
+                return [
+                    'file_name' => $this->displayFileNameForImportUi($filePath, $fileName),
+                    'hint' => $hint,
+                ];
             })
             ->values()
             ->all();
@@ -177,8 +207,35 @@ class VisitImportFileHelper
         return $baseName.'-'.Str::uuid().'.'.$extension;
     }
 
+    /**
+     * Nombre legible para la UI: si solo tenemos la ruta interna slug+uuid, se quita el uuid y se restauran guiones bajos; si tenemos el nombre original del upload, se usa tal cual.
+     */
+    private function displayFileNameForImportUi(string $storedRelativePath, string $fileNameOrBasename): string
+    {
+        $storedBasename = basename($storedRelativePath);
+
+        if ($fileNameOrBasename !== $storedBasename) {
+            return $fileNameOrBasename;
+        }
+
+        $fn = pathinfo($storedBasename, PATHINFO_FILENAME);
+        $ext = pathinfo($storedBasename, PATHINFO_EXTENSION);
+        $fnStripped = (string) preg_replace(
+            '/-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i',
+            '',
+            (string) $fn,
+        );
+        $underscored = str_replace('-', '_', $fnStripped);
+        $titled = collect(explode('_', $underscored))
+            ->filter(fn (string $p): bool => $p !== '')
+            ->map(fn (string $p): string => Str::ucfirst(Str::lower($p)))
+            ->implode('_');
+
+        return $titled.($ext !== '' ? '.'.strtolower((string) $ext) : '');
+    }
+
     private function getFirstValidationError(ValidationException $exception): string
     {
-        return (string) (collect($exception->errors())->flatten()->first() ?? 'Validation failed.');
+        return (string) (collect($exception->errors())->flatten()->first() ?? 'La validacion fallo.');
     }
 }

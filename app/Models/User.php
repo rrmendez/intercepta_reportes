@@ -9,6 +9,7 @@ use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
@@ -49,5 +50,15 @@ class User extends Authenticatable implements FilamentUser
     public function canAccessPanel(Panel $panel): bool
     {
         return $this->isAdmin() || $this->isOperator();
+    }
+
+    public function visitImports(): HasMany
+    {
+        return $this->hasMany(VisitImport::class);
+    }
+
+    public function generatedReports(): HasMany
+    {
+        return $this->hasMany(Report::class, 'generated_by_user_id');
     }
 }

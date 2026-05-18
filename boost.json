@@ -1,17 +1,21 @@
 {
     "agents": [
-        "codex"
+        "codex",
+        "cursor"
     ],
+    "cloud": false,
     "guidelines": true,
     "mcp": true,
     "nightwatch_mcp": false,
     "packages": [
-        "filament/filament"
+        "filament/filament",
+        "spatie/laravel-permission"
     ],
     "sail": false,
     "skills": [
         "laravel-best-practices",
         "pest-testing",
-        "tailwindcss-development"
+        "tailwindcss-development",
+        "laravel-permission-development"
     ]
 }

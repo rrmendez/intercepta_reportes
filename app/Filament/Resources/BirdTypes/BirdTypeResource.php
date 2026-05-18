@@ -25,13 +25,15 @@ class BirdTypeResource extends Resource
 {
     protected static ?string $model = BirdType::class;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Administration';
+    protected static string|UnitEnum|null $navigationGroup = 'Administracion';
 
     protected static ?int $navigationSort = 1;
 
-    protected static ?string $navigationLabel = 'Bird Types';
+    protected static ?string $navigationLabel = 'Tipos de ave';
 
     protected static ?string $recordTitleAttribute = 'name';
 
@@ -40,14 +42,17 @@ class BirdTypeResource extends Resource
         return $schema
             ->components([
                 TextInput::make('name')
+                    ->label('Nombre')
                     ->required()
                     ->unique(ignoreRecord: true)
                     ->columnSpanFull()
                     ->maxLength(255),
                 Textarea::make('description')
+                    ->label('Observaciones')
                     ->rows(3)
                     ->columnSpanFull(),
                 Toggle::make('active')
+                    ->label('Activo')
                     ->default(true)
                     ->columnSpanFull()
                     ->required(),
@@ -60,13 +65,15 @@ class BirdTypeResource extends Resource
             ->recordTitleAttribute('name')
             ->columns([
                 TextColumn::make('name')
+                    ->label('Nombre')
                     ->searchable()
                     ->sortable(),
                 IconColumn::make('active')
+                    ->label('Activo')
                     ->boolean()
                     ->sortable(),
                 TextColumn::make('description')
-                    ->label('Observations')
+                    ->label('Observaciones')
                     ->searchable(),
             ])
             ->filters([
@@ -88,6 +95,16 @@ class BirdTypeResource extends Resource
         return [
             //
         ];
+    }
+
+    public static function getModelLabel(): string
+    {
+        return 'tipo de ave';
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return 'tipos de ave';
     }
 
     public static function getPages(): array

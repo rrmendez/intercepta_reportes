@@ -26,13 +26,15 @@ class EmployeeResource extends Resource
 {
     protected static ?string $model = Employee::class;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::Identification;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Administration';
+    protected static string|UnitEnum|null $navigationGroup = 'Administracion';
 
     protected static ?int $navigationSort = 2;
 
-    protected static ?string $navigationLabel = 'Employees';
+    protected static ?string $navigationLabel = 'Empleados';
 
     protected static ?string $recordTitleAttribute = 'name';
 
@@ -41,23 +43,30 @@ class EmployeeResource extends Resource
         return $schema
             ->components([
                 TextInput::make('name')
+                    ->label('Nombre')
                     ->required()
                     ->maxLength(255),
                 TextInput::make('email')
+                    ->label('Correo')
                     ->email()
                     ->unique(ignoreRecord: true)
                     ->maxLength(255),
                 TextInput::make('phone')
+                    ->label('Telefono')
                     ->tel()
                     ->maxLength(255),
                 TextInput::make('document_number')
+                    ->label('Documento')
                     ->unique(ignoreRecord: true)
                     ->maxLength(255),
-                DatePicker::make('birthday'),
+                DatePicker::make('birthday')
+                    ->label('Fecha de nacimiento'),
                 Textarea::make('address')
+                    ->label('Direccion')
                     ->rows(2)
                     ->columnSpanFull(),
                 Toggle::make('active')
+                    ->label('Activo')
                     ->default(true)
                     ->required(),
             ]);
@@ -69,18 +78,23 @@ class EmployeeResource extends Resource
             ->recordTitleAttribute('name')
             ->columns([
                 TextColumn::make('name')
+                    ->label('Nombre')
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('email')
+                    ->label('Correo')
                     ->searchable()
                     ->toggleable(),
                 TextColumn::make('phone')
+                    ->label('Telefono')
                     ->searchable()
                     ->toggleable(),
                 TextColumn::make('birthday')
+                    ->label('Fecha de nacimiento')
                     ->date()
                     ->sortable(),
                 IconColumn::make('active')
+                    ->label('Activo')
                     ->boolean(),
             ])
             ->filters([
@@ -102,6 +116,16 @@ class EmployeeResource extends Resource
         return [
             //
         ];
+    }
+
+    public static function getModelLabel(): string
+    {
+        return 'empleado';
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return 'empleados';
     }
 
     public static function getPages(): array

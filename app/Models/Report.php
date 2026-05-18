@@ -10,12 +10,16 @@ class Report extends Model
 {
     protected $fillable = [
         'client_id',
+        'generated_by_user_id',
         'template_id',
         'month',
         'year',
+        'date_from',
+        'date_until',
         'generated_file_path',
         'status',
         'generated_at',
+        'email_sent_at',
         'data',
     ];
 
@@ -27,10 +31,18 @@ class Report extends Model
         return [
             'month' => 'integer',
             'year' => 'integer',
+            'date_from' => 'date',
+            'date_until' => 'date',
             'generated_at' => 'datetime',
+            'email_sent_at' => 'datetime',
             'status' => ReportStatus::class,
             'data' => 'array',
         ];
+    }
+
+    public function generatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'generated_by_user_id');
     }
 
     public function client(): BelongsTo

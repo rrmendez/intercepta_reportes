@@ -18,9 +18,9 @@ use Filament\Tables\Table;
 
 class SectionsRelationManager extends RelationManager
 {
-    protected static string $relationship = 'locations';
+    protected static string $relationship = 'namedLocations';
 
-    protected static ?string $title = 'Sections';
+    protected static ?string $title = 'Secciones';
 
     public function isReadOnly(): bool
     {
@@ -32,12 +32,15 @@ class SectionsRelationManager extends RelationManager
         return $schema
             ->components([
                 TextInput::make('name')
+                    ->label('Nombre')
                     ->required()
                     ->maxLength(255),
                 Toggle::make('active')
+                    ->label('Activo')
                     ->default(true)
                     ->required(),
                 Textarea::make('description')
+                    ->label('Descripcion')
                     ->rows(3)
                     ->columnSpanFull(),
             ])
@@ -50,9 +53,11 @@ class SectionsRelationManager extends RelationManager
             ->recordTitleAttribute('name')
             ->columns([
                 TextColumn::make('name')
+                    ->label('Nombre')
                     ->searchable()
                     ->sortable(),
                 IconColumn::make('active')
+                    ->label('Activo')
                     ->boolean()
                     ->sortable(),
             ])

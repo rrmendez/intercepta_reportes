@@ -4,7 +4,7 @@ namespace App\Filament\Resources\Visits;
 
 use App\Filament\Resources\Visits\Pages\CreateVisit;
 use App\Filament\Resources\Visits\Pages\EditVisit;
-use App\Filament\Resources\Visits\Pages\ListVisits;
+use App\Filament\Resources\Visits\Pages\ListVisitsSpreadsheet;
 use App\Models\BirdType;
 use App\Models\Location;
 use App\Models\Visit;
@@ -39,11 +39,11 @@ class VisitResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::CalendarDays;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Business';
+    protected static string|UnitEnum|null $navigationGroup = 'General';
 
     protected static ?int $navigationSort = 5;
 
-    protected static ?string $navigationLabel = 'Visits';
+    protected static ?string $navigationLabel = 'Visitas';
 
     protected static ?string $recordTitleAttribute = 'id';
 
@@ -51,9 +51,10 @@ class VisitResource extends Resource
     {
         return $schema
             ->components([
-                Section::make('Visit')
+                Section::make('Visita')
                     ->schema([
                         Select::make('client_id')
+                            ->label('Cliente')
                             ->relationship('client', 'name')
                             ->searchable()
                             ->preload()
@@ -61,34 +62,40 @@ class VisitResource extends Resource
                             ->required()
                             ->afterStateUpdated(fn (Set $set): mixed => $set('visitReports', [])),
                         Select::make('employee_id')
+                            ->label('Empleado')
                             ->relationship('employee', 'name')
                             ->searchable()
                             ->preload()
                             ->required(),
                         DateTimePicker::make('date_init')
+                            ->label('Fecha de inicio')
                             ->required()
                             ->seconds(false),
                         DateTimePicker::make('date_end')
+                            ->label('Fecha de finalizacion')
                             ->seconds(false),
                         Select::make('status')
+                            ->label('Estado')
                             ->options(VisitStatus::options())
                             ->default(VisitStatus::Scheduled->value)
                             ->required(),
                         Textarea::make('observation')
+                            ->label('Observacion')
                             ->rows(3)
                             ->columnSpanFull(),
                     ])
                     ->columns(2),
-                Section::make('Visit Reports')
+                Section::make('Detalles de observacion')
                     ->schema([
                         Repeater::make('visitReports')
                             ->relationship()
                             ->schema([
                                 Select::make('location_id')
-                                    ->label('Section')
+                                    ->label('Seccion')
                                     ->options(fn (Get $get): array => Location::query()
                                         ->where('client_id', $get('../../client_id'))
                                         ->where('active', true)
+                                        ->excludingInternalDefault()
                                         ->orderBy('name')
                                         ->pluck('name', 'id')
                                         ->all())
@@ -97,7 +104,7 @@ class VisitResource extends Resource
                                     ->required()
                                     ->disabled(fn (Get $get): bool => blank($get('../../client_id'))),
                                 Select::make('bird_type_id')
-                                    ->label('Bird Type')
+                                    ->label('Tipo de ave')
                                     ->options(fn (): array => BirdType::query()
                                         ->where('active', true)
                                         ->orderBy('name')
@@ -107,17 +114,19 @@ class VisitResource extends Resource
                                     ->preload()
                                     ->required(),
                                 TextInput::make('quantity')
+                                    ->label('Cantidad')
                                     ->numeric()
                                     ->integer()
                                     ->minValue(1)
                                     ->required(),
                                 Textarea::make('observation')
+                                    ->label('Observacion')
                                     ->rows(2)
                                     ->columnSpanFull(),
                             ])
                             ->columns(3)
                             ->defaultItems(1)
-                            ->addActionLabel('Add Observation Detail')
+                            ->addActionLabel('Agregar detalle de observacion')
                             ->reorderable(false)
                             ->columnSpanFull()
                             ->required(),
@@ -135,21 +144,24 @@ class VisitResource extends Resource
                     ->label('#')
                     ->sortable(),
                 TextColumn::make('client.name')
-                    ->label('Client')
+                    ->label('Cliente')
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('employee.name')
-                    ->label('Employee')
+                    ->label('Empleado')
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('date_init')
+                    ->label('Inicio')
                     ->dateTime('Y-m-d H:i')
                     ->sortable(),
                 TextColumn::make('date_end')
+                    ->label('Finalizacion')
                     ->dateTime('Y-m-d H:i')
                     ->sortable()
                     ->toggleable(),
                 TextColumn::make('status')
+                    ->label('Estado')
                     ->badge()
                     ->formatStateUsing(function (VisitStatus|string|null $state): string {
                         if ($state instanceof VisitStatus) {
@@ -172,20 +184,26 @@ class VisitResource extends Resource
                     }),
                 TextColumn::make('visit_reports_count')
                     ->counts('visitReports')
-                    ->label('Quantity'),
+                    ->label('Cantidad'),
                 TextColumn::make('observation')
+                    ->label('Observacion')
                     ->limit(40)
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 SelectFilter::make('client')
+                    ->label('Cliente')
                     ->relationship('client', 'name'),
                 SelectFilter::make('employee')
+                    ->label('Empleado')
                     ->relationship('employee', 'name'),
                 Filter::make('date_range')
+                    ->label('Rango de fechas')
                     ->schema([
-                        DatePicker::make('from'),
-                        DatePicker::make('until'),
+                        DatePicker::make('from')
+                            ->label('Desde'),
+                        DatePicker::make('until')
+                            ->label('Hasta'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
@@ -218,10 +236,20 @@ class VisitResource extends Resource
         ];
     }
 
+    public static function getModelLabel(): string
+    {
+        return 'visita';
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return 'visitas';
+    }
+
     public static function getPages(): array
     {
         return [
-            'index' => ListVisits::route('/'),
+            'index' => ListVisitsSpreadsheet::route('/'),
             'create' => CreateVisit::route('/create'),
             'edit' => EditVisit::route('/{record}/edit'),
         ];

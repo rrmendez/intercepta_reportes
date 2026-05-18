@@ -21,19 +21,22 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
 class LocationResource extends Resource
 {
     protected static ?string $model = Location::class;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::MapPin;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Business';
+    protected static string|UnitEnum|null $navigationGroup = 'Operaciones';
 
     protected static ?int $navigationSort = 2;
 
-    protected static ?string $navigationLabel = 'Sections';
+    protected static ?string $navigationLabel = 'Secciones';
 
     protected static ?string $recordTitleAttribute = 'name';
 
@@ -42,20 +45,24 @@ class LocationResource extends Resource
         return $schema
             ->components([
                 Select::make('client_id')
+                    ->label('Cliente')
                     ->relationship('client', 'name')
                     ->searchable()
                     ->preload()
                     ->columnSpanFull()
                     ->required(),
                 TextInput::make('name')
+                    ->label('Nombre')
                     ->required()
                     ->columnSpanFull()
                     ->maxLength(255),
                 Textarea::make('description')
+                    ->label('Descripcion')
                     ->rows(3)
                     ->columnSpanFull()
                     ->columnSpanFull(),
                 Toggle::make('active')
+                    ->label('Activo')
                     ->default(true)
                     ->columnSpanFull()
                     ->required(),
@@ -68,18 +75,21 @@ class LocationResource extends Resource
             ->recordTitleAttribute('name')
             ->columns([
                 TextColumn::make('client.name')
-                    ->label('Client')
+                    ->label('Cliente')
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('name')
+                    ->label('Nombre')
                     ->searchable()
                     ->sortable(),
                 IconColumn::make('active')
+                    ->label('Activo')
                     ->boolean()
                     ->sortable(),
             ])
             ->filters([
                 SelectFilter::make('client')
+                    ->label('Cliente')
                     ->relationship('client', 'name'),
                 TernaryFilter::make('active'),
             ])
@@ -109,13 +119,18 @@ class LocationResource extends Resource
         ];
     }
 
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->excludingInternalDefault();
+    }
+
     public static function getModelLabel(): string
     {
-        return 'section';
+        return 'seccion';
     }
 
     public static function getPluralModelLabel(): string
     {
-        return 'sections';
+        return 'secciones';
     }
 }

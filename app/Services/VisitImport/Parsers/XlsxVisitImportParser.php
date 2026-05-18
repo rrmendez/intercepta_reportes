@@ -18,7 +18,7 @@ class XlsxVisitImportParser implements VisitImportParser
         $zip = new ZipArchive;
 
         if ($zip->open($absolutePath) !== true) {
-            throw new RuntimeException('Unable to open XLSX file.');
+            throw new RuntimeException('No se pudo abrir el archivo XLSX.');
         }
 
         $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
@@ -26,7 +26,7 @@ class XlsxVisitImportParser implements VisitImportParser
         if ($sheetXml === false) {
             $zip->close();
 
-            throw new RuntimeException('Invalid XLSX structure: missing first worksheet.');
+            throw new RuntimeException('Estructura XLSX invalida: falta la primera hoja.');
         }
 
         $sharedStringsXml = $zip->getFromName('xl/sharedStrings.xml');
@@ -93,7 +93,7 @@ class XlsxVisitImportParser implements VisitImportParser
         $xml = simplexml_load_string($sheetXml);
 
         if (! $xml instanceof SimpleXMLElement) {
-            throw new RuntimeException('Invalid XLSX worksheet XML.');
+            throw new RuntimeException('XML de hoja XLSX invalido.');
         }
 
         $rowNodes = $this->xpathWithSpreadsheetNamespace($xml, '//x:sheetData/x:row');

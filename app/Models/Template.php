@@ -12,6 +12,7 @@ class Template extends Model
         'client_id',
         'name',
         'content',
+        'pdf_template',
         'active',
     ];
 

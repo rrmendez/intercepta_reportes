@@ -11,6 +11,7 @@ class Visit extends Model
 {
     protected $fillable = [
         'client_id',
+        'visit_import_id',
         'employee_id',
         'date_init',
         'date_end',
@@ -33,6 +34,11 @@ class Visit extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    public function visitImport(): BelongsTo
+    {
+        return $this->belongsTo(VisitImport::class);
     }
 
     public function employee(): BelongsTo

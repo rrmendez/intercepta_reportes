@@ -27,13 +27,15 @@ class SectionResource extends Resource
 {
     protected static ?string $model = Section::class;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::QueueList;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Business';
+    protected static string|UnitEnum|null $navigationGroup = 'Operaciones';
 
     protected static ?int $navigationSort = 4;
 
-    protected static ?string $navigationLabel = 'Segments';
+    protected static ?string $navigationLabel = 'Segmentos';
 
     protected static ?string $recordTitleAttribute = 'title';
 
@@ -41,25 +43,29 @@ class SectionResource extends Resource
     {
         return $schema
             ->components([
-                FormSection::make('Segment Data')
+                FormSection::make('Datos del segmento')
                     ->schema([
                         Select::make('template_id')
+                            ->label('Plantilla')
                             ->relationship('template', 'name')
                             ->searchable()
                             ->preload()
                             ->columnSpanFull()
                             ->required(),
                         TextInput::make('title')
+                            ->label('Titulo')
                             ->columnSpanFull()
                             ->required()
                             ->maxLength(255),
                         TextInput::make('order')
+                            ->label('Orden')
                             ->columnSpanFull()
                             ->numeric()
                             ->integer()
                             ->required()
                             ->default(0),
                         RichEditor::make('text')
+                            ->label('Texto')
                             ->columnSpanFull(),
                     ])
                     ->columns(1)
@@ -73,16 +79,19 @@ class SectionResource extends Resource
             ->recordTitleAttribute('title')
             ->columns([
                 TextColumn::make('template.name')
-                    ->label('Template')
+                    ->label('Plantilla')
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('title')
+                    ->label('Titulo')
                     ->searchable(),
                 TextColumn::make('order')
+                    ->label('Orden')
                     ->sortable(),
             ])
             ->filters([
                 SelectFilter::make('template')
+                    ->label('Plantilla')
                     ->relationship('template', 'name'),
             ])
             ->recordActions([
@@ -114,11 +123,11 @@ class SectionResource extends Resource
 
     public static function getModelLabel(): string
     {
-        return 'segment';
+        return 'segmento';
     }
 
     public static function getPluralModelLabel(): string
     {
-        return 'segments';
+        return 'segmentos';
     }
 }

@@ -41,13 +41,13 @@ class VisitImportStructureValidator
 
         if ($missingColumns !== []) {
             throw ValidationException::withMessages([
-                'file' => ['Missing required columns: '.implode(', ', $missingColumns)],
+                'file' => ['Faltan columnas obligatorias: '.implode(', ', $missingColumns)],
             ]);
         }
 
         if ($payload->rows->isEmpty()) {
             throw ValidationException::withMessages([
-                'file' => ['The file does not contain data rows.'],
+                'file' => ['El archivo no contiene filas de datos.'],
             ]);
         }
     }

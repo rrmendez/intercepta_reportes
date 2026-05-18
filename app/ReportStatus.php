@@ -6,14 +6,16 @@ enum ReportStatus: string
 {
     case Draft = 'draft';
     case Generated = 'generated';
+    case Sent = 'sent';
     case Failed = 'failed';
 
     public function label(): string
     {
         return match ($this) {
-            self::Draft => 'Draft',
-            self::Generated => 'Generated',
-            self::Failed => 'Failed',
+            self::Draft => 'Borrador',
+            self::Generated => 'Generado',
+            self::Sent => 'Enviado',
+            self::Failed => 'Fallido',
         };
     }
 

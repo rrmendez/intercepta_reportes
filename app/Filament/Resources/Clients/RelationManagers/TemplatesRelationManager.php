@@ -21,7 +21,7 @@ class TemplatesRelationManager extends RelationManager
 {
     protected static string $relationship = 'templates';
 
-    protected static ?string $title = 'Templates';
+    protected static ?string $title = 'Plantillas';
 
     public function isReadOnly(): bool
     {
@@ -33,13 +33,15 @@ class TemplatesRelationManager extends RelationManager
         return $schema
             ->components([
                 TextInput::make('name')
+                    ->label('Nombre')
                     ->required()
                     ->maxLength(255),
                 Toggle::make('active')
+                    ->label('Activo')
                     ->default(true)
                     ->required(),
                 RichEditor::make('content')
-                    ->label('General Content')
+                    ->label('Contenido general')
                     ->toolbarButtons([
                         'bold',
                         'italic',
@@ -56,9 +58,11 @@ class TemplatesRelationManager extends RelationManager
                     ->orderColumn('order')
                     ->schema([
                         TextInput::make('title')
+                            ->label('Titulo')
                             ->required()
                             ->maxLength(255),
                         RichEditor::make('text')
+                            ->label('Texto')
                             ->toolbarButtons([
                                 'bold',
                                 'italic',
@@ -71,7 +75,7 @@ class TemplatesRelationManager extends RelationManager
                     ->columns(1)
                     ->reorderableWithButtons()
                     ->defaultItems(0)
-                    ->addActionLabel('Add Segment')
+                    ->addActionLabel('Agregar segmento')
                     ->columnSpanFull(),
             ])
             ->columns(2);
@@ -83,14 +87,16 @@ class TemplatesRelationManager extends RelationManager
             ->recordTitleAttribute('name')
             ->columns([
                 TextColumn::make('name')
+                    ->label('Nombre')
                     ->searchable()
                     ->sortable(),
                 IconColumn::make('active')
+                    ->label('Activo')
                     ->boolean()
                     ->sortable(),
                 TextColumn::make('sections_count')
                     ->counts('sections')
-                    ->label('Segments'),
+                    ->label('Segmentos'),
             ])
             ->headerActions([
                 CreateAction::make(),
