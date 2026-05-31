@@ -74,7 +74,7 @@ it('shows a muted message when there is no chart data', function (): void {
 });
 
 it('includes line charts in default pdf template source', function (): void {
-    $source = file_get_contents(resource_path('pdf-report-templates/default.blade.txt'));
+    $source = file_get_contents(resource_path('pdf-report-templates/default.blade.php'));
 
     expect($source)->toBeString()
         ->and($source)->toContain("@include('pdf.partials.report-line-charts')");

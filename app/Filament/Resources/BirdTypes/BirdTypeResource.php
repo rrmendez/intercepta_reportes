@@ -9,6 +9,7 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -19,19 +20,18 @@ use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
+use Illuminate\Support\Str;
 use UnitEnum;
 
 class BirdTypeResource extends Resource
 {
     protected static ?string $model = BirdType::class;
 
-    protected static bool $shouldRegisterNavigation = false;
-
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Administracion';
+    protected static string|UnitEnum|null $navigationGroup = 'Operaciones';
 
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 13;
 
     protected static ?string $navigationLabel = 'Tipos de ave';
 
@@ -42,14 +42,38 @@ class BirdTypeResource extends Resource
         return $schema
             ->components([
                 TextInput::make('name')
-                    ->label('Nombre')
+                    ->label('Etiqueta de importacion (Excel)')
                     ->required()
                     ->unique(ignoreRecord: true)
-                    ->columnSpanFull()
                     ->maxLength(255),
-                Textarea::make('description')
-                    ->label('Observaciones')
-                    ->rows(3)
+                TextInput::make('slug')
+                    ->label('Identificador')
+                    ->required()
+                    ->unique(ignoreRecord: true)
+                    ->maxLength(255)
+                    ->helperText('Clave interna unica. Se sugiere automaticamente desde la etiqueta de importacion.'),
+                TextInput::make('common_name')
+                    ->label('Nombre comun (PDF)')
+                    ->required()
+                    ->maxLength(255),
+                TextInput::make('common_name_plural')
+                    ->label('Plural (PDF)')
+                    ->maxLength(255),
+                Textarea::make('scientific_name')
+                    ->label('Nombre cientifico')
+                    ->rows(2)
+                    ->columnSpanFull(),
+                Repeater::make('aliases')
+                    ->label('Variantes aceptadas al importar')
+                    ->relationship()
+                    ->schema([
+                        TextInput::make('alias')
+                            ->label('Alias')
+                            ->required()
+                            ->maxLength(255),
+                    ])
+                    ->defaultItems(0)
+                    ->addActionLabel('Agregar variante')
                     ->columnSpanFull(),
                 Toggle::make('active')
                     ->label('Activo')
@@ -65,22 +89,46 @@ class BirdTypeResource extends Resource
             ->recordTitleAttribute('name')
             ->columns([
                 TextColumn::make('name')
-                    ->label('Nombre')
+                    ->label('Importacion')
                     ->searchable()
+                    ->sortable(),
+                TextColumn::make('common_name')
+                    ->label('Nombre comun')
+                    ->searchable()
+                    ->sortable(),
+                TextColumn::make('scientific_name')
+                    ->label('Nombre cientifico')
+                    ->searchable()
+                    ->wrap()
+                    ->placeholder('—'),
+                TextColumn::make('aliases_count')
+                    ->label('Variantes')
+                    ->counts('aliases')
                     ->sortable(),
                 IconColumn::make('active')
                     ->label('Activo')
                     ->boolean()
                     ->sortable(),
-                TextColumn::make('description')
-                    ->label('Observaciones')
-                    ->searchable(),
             ])
             ->filters([
-                TernaryFilter::make('active'),
+                TernaryFilter::make('active')
+                    ->label('Activo'),
             ])
+            ->defaultSort('name')
             ->recordActions([
-                EditAction::make(),
+                EditAction::make()
+                    ->modalHeading('Editar tipo de ave')
+                    ->modalSubmitActionLabel('Guardar')
+                    ->mutateFormDataUsing(function (array $data): array {
+                        if (filled($data['slug'] ?? null)) {
+                            return $data;
+                        }
+
+                        $source = (string) ($data['name'] ?? $data['common_name'] ?? '');
+                        $data['slug'] = Str::slug($source) !== '' ? Str::slug($source) : Str::slug($source, '-');
+
+                        return $data;
+                    }),
                 DeleteAction::make(),
             ])
             ->toolbarActions([

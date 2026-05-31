@@ -58,7 +58,7 @@ final class VisitSpreadsheetQuantityColumns
 
     private function defaultBirdTypeId(Collection $birdTypes): ?int
     {
-        $palomas = $birdTypes->first(fn (BirdType $birdType): bool => $birdType->name === 'Palomas');
+        $palomas = $birdTypes->first(fn (BirdType $birdType): bool => $birdType->slug === 'palomas');
 
         return $palomas?->id ?? $birdTypes->first()?->id;
     }

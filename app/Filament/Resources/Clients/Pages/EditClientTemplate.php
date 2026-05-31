@@ -6,6 +6,7 @@ use App\Filament\Resources\Clients\ClientResource;
 use App\Models\Client;
 use App\Models\Report;
 use App\Models\Template;
+use App\Services\ClientPdfTemplateService;
 use App\Services\ReportBladeStringRenderer;
 use App\Services\ReportPdfTemplateDefaults;
 use App\Services\Reports\ReportBladeVariableReference;
@@ -117,14 +118,19 @@ class EditClientTemplate extends Page
 
     public function save(): void
     {
-        $template = $this->getTemplate();
+        $client = $this->getClient();
         $state = $this->form->getState();
+
+        $template = app(ClientPdfTemplateService::class)->saveActiveTemplate(
+            $client,
+            (string) ($state['pdf_template'] ?? ''),
+        );
 
         $template->update([
             'name' => (string) $state['name'],
-            'pdf_template' => (string) ($state['pdf_template'] ?? $template->pdf_template ?? ''),
-            'active' => true,
         ]);
+
+        $this->templateId = $template->id;
 
         Notification::make()
             ->title('Plantilla guardada')
@@ -140,14 +146,36 @@ class EditClientTemplate extends Page
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('restoreBasicTemplate')
+                ->label('Restaurar plantilla basica')
+                ->icon(Heroicon::OutlinedArrowPath)
+                ->color('warning')
+                ->requiresConfirmation()
+                ->modalHeading('Restaurar plantilla basica')
+                ->modalDescription('Se reemplazara el contenido del editor con la plantilla basica inicial. Los cambios no guardados se perderan. Guarda la plantilla para persistir la restauracion en el cliente.')
+                ->action(fn () => $this->restoreBasicTemplate()),
             Action::make('bladeVariables')
                 ->label('Variables disponibles')
                 ->icon(Heroicon::OutlinedInformationCircle)
                 ->modalHeading('Variables en la plantilla')
-                ->modalDescription('La plantilla se compila con Blade::render. Solo personal de confianza debe editar Blade (equivale a ejecutar PHP). Variables tipicas: $client, $report, $period_label, $visits (array de filas con las mismas claves que la tabla de visitas), $visit_reports, $visits_count, $total_observations, $total_quantity, $totals_by_bird_type, $totals_by_location.')
+                ->modalDescription('La plantilla se compila con Blade. Use la pestaña Variables para ver cada variable en español con su descripción. Las variables principales incluyen $cliente, $informe, $etiqueta_periodo, $visitas, $fecha_desde_texto, $fecha_hasta_texto y textos editables como $texto_objetivo o $texto_conclusion. Los títulos de sección están fijos en el HTML de la plantilla.')
                 ->modalSubmitAction(false)
                 ->modalCancelActionLabel('Cerrar'),
         ];
+    }
+
+    public function restoreBasicTemplate(): void
+    {
+        $this->form->fill([
+            ...$this->form->getState(),
+            'pdf_template' => ReportPdfTemplateDefaults::basicExpandedSourceForClient($this->getClient()),
+        ]);
+
+        Notification::make()
+            ->title('Plantilla basica restaurada en el editor')
+            ->body('Guarda la plantilla para aplicar los cambios al cliente.')
+            ->success()
+            ->send();
     }
 
     private function previewHtml(Get $get): HtmlString
@@ -197,7 +225,7 @@ class EditClientTemplate extends Page
 
         $bladeData = app(ReportBladeStringRenderer::class)->bladeData($client, $report, $period);
 
-        $note = 'En esta pantalla $visits es un array de filas con las mismas claves que la tabla de visitas (mes de vista previa: ultimo mes con visitas o mes actual), igual que en la vista previa del PDF.';
+        $note = 'En esta pantalla $visitas es un array de filas con las mismas claves que la tabla de visitas (mes de vista previa: último mes con visitas o mes actual). Todas las variables están en español; consulte la columna Resumen para saber qué representa cada una.';
 
         return app(ReportBladeVariableReference::class)->toHtml($bladeData, $note);
     }
@@ -223,22 +251,7 @@ class EditClientTemplate extends Page
 
     private function resolveTemplate(): Template
     {
-        $client = $this->getClient();
-
-        $template = $client->templates()
-            ->where('active', true)
-            ->latest('id')
-            ->first();
-
-        if ($template instanceof Template) {
-            return $template;
-        }
-
-        return $client->templates()->create([
-            'name' => ReportPdfTemplateDefaults::suggestedName($client),
-            'pdf_template' => ReportPdfTemplateDefaults::bladeSourceForClient($client),
-            'active' => true,
-        ]);
+        return app(ClientPdfTemplateService::class)->ensureActiveTemplate($this->getClient());
     }
 
     private function getTemplate(): Template

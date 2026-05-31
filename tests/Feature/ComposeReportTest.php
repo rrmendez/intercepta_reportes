@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\ClientImportMode;
 use App\Filament\Resources\Reports\Pages\ComposeReport;
 use App\Mail\ReportPdfEmail;
 use App\Models\Client;
@@ -154,7 +155,10 @@ BLADE,
     $component->dispatch('compose-report-range-changed', dateFrom: '2026-05-10', dateUntil: '2026-05-20');
 
     expect($component->get('data.date_from'))->toBe('2026-05-10')
-        ->and($component->get('data.date_until'))->toBe('2026-05-20');
+        ->and($component->get('data.date_until'))->toBe('2026-05-20')
+        ->and($component->get('date_from'))->toBe('2026-05-10')
+        ->and($component->get('date_until'))->toBe('2026-05-20')
+        ->and($component->get('reportPreviewRevision'))->toBe(1);
 });
 
 it('stores spreadsheet filters from the visits preview table event', function (): void {
@@ -200,6 +204,10 @@ BLADE,
     $component->dispatch('compose-report-spreadsheet-filters-changed', filters: $filters);
 
     expect($component->get('previewSpreadsheetFilters'))->toBe($filters)
+        ->and($component->get('date_from'))->toBe('2026-05-10')
+        ->and($component->get('date_until'))->toBe('2026-05-12')
+        ->and($component->get('data.date_from'))->toBe('2026-05-10')
+        ->and($component->get('data.date_until'))->toBe('2026-05-12')
         ->and($component->get('reportPreviewRevision'))->toBe(1);
 });
 
@@ -237,6 +245,33 @@ BLADE,
     $component->dispatch('report-period-visits-changed');
 
     expect($component->get('reportPreviewRevision'))->toBe(1);
+});
+
+it('expands all pdf partials in the blade code editor for the basic template', function (): void {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $client = Client::query()->create([
+        'name' => 'Cliente Basico',
+        'active' => true,
+        'import_mode' => ClientImportMode::SingleSectorSingleBird,
+    ]);
+
+    $component = Livewire::actingAs($user)
+        ->test(ComposeReport::class, [
+            'client_id' => $client->id,
+            'date_from' => '2026-05-01',
+            'date_until' => '2026-05-31',
+        ]);
+
+    $source = (string) $component->get('data.pdf_template');
+
+    expect($source)->toContain('Situación inicial del predio')
+        ->and($source)->toContain('Objetivo y metodología')
+        ->and($source)->toContain('Evolución del control de fauna')
+        ->and($source)->toContain('Detalles del servicio por lugar de control')
+        ->and($source)->toContain('CONTROL BIOLÓGICO DE FAUNA')
+        ->and($source)->not->toMatch('/^[ \t]*@include\s*\(\s*[\'"]pdf\.partials\./m');
 });
 
 it('expands editable report content pages in the blade code editor', function (): void {
@@ -285,10 +320,106 @@ BLADE,
         ->and($source)->not->toContain("@include('pdf.partials.report-objective-methodology-page')");
 });
 
-it('keeps the compose html preview on a white pdf-like background', function (): void {
-    $source = (string) file_get_contents(app_path('Filament/Resources/Reports/Pages/ComposeReport.php'));
+it('persists the editor template to the client active template when saving draft', function (): void {
+    Storage::fake('local');
 
-    expect($source)->toContain('bg-white p-4 text-gray-950')
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $client = Client::query()->create([
+        'name' => 'Cliente Plantilla',
+        'active' => true,
+        'import_mode' => ClientImportMode::SingleSectorSingleBird,
+    ]);
+
+    $customTemplate = '<!DOCTYPE html><html><body><p>PLANTILLA PERSONALIZADA {{ $client->name }}</p></body></html>';
+
+    Livewire::actingAs($user)
+        ->test(ComposeReport::class, [
+            'client_id' => $client->id,
+            'date_from' => '2026-05-01',
+            'date_until' => '2026-05-31',
+        ])
+        ->fillForm(['pdf_template' => $customTemplate])
+        ->callAction(TestAction::make('saveDraft'));
+
+    $template = Template::query()->where('client_id', $client->id)->where('active', true)->first();
+
+    expect($template)->not->toBeNull()
+        ->and($template?->pdf_template)->toBe($customTemplate);
+
+    $report = Report::query()->whereBelongsTo($client)->sole();
+    expect($report->template_id)->toBe($template?->id)
+        ->and($report->data[ComposeReport::EDITOR_DATA_KEY])->toBe($customTemplate);
+});
+
+it('loads the saved client template when composing a new report period', function (): void {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $client = Client::query()->create([
+        'name' => 'Cliente Reutiliza',
+        'active' => true,
+    ]);
+
+    $savedTemplate = '<!DOCTYPE html><html><body><p>PLANTILLA GUARDADA {{ $period_label }}</p></body></html>';
+
+    Template::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Plantilla guardada',
+        'pdf_template' => $savedTemplate,
+        'active' => true,
+    ]);
+
+    $component = Livewire::actingAs($user)
+        ->test(ComposeReport::class, [
+            'client_id' => $client->id,
+            'date_from' => '2026-06-01',
+            'date_until' => '2026-06-30',
+        ]);
+
+    expect((string) $component->get('data.pdf_template'))->toBe($savedTemplate);
+});
+
+it('restores the basic template in the editor without updating the client template until save', function (): void {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $client = Client::query()->create([
+        'name' => 'Cliente Restaurar',
+        'active' => true,
+        'import_mode' => ClientImportMode::SingleSectorSingleBird,
+    ]);
+
+    $template = Template::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Plantilla',
+        'pdf_template' => '<!DOCTYPE html><html><body><p>ORIGINAL</p></body></html>',
+        'active' => true,
+    ]);
+
+    $component = Livewire::actingAs($user)
+        ->test(ComposeReport::class, [
+            'client_id' => $client->id,
+            'date_from' => '2026-05-01',
+            'date_until' => '2026-05-31',
+        ])
+        ->fillForm(['pdf_template' => '<!DOCTYPE html><html><body><p>MODIFICADO</p></body></html>'])
+        ->callAction(TestAction::make('restoreBasicTemplate'));
+
+    expect((string) $component->get('data.pdf_template'))
+        ->toContain('CONTROL BIOLÓGICO DE FAUNA')
+        ->and((string) $component->get('data.pdf_template'))->not->toContain('MODIFICADO');
+
+    $template->refresh();
+    expect($template->pdf_template)->toBe('<!DOCTYPE html><html><body><p>ORIGINAL</p></body></html>');
+});
+
+it('keeps the compose html preview on a white pdf-like background', function (): void {
+    $source = (string) file_get_contents(app_path('Services/ReportHtmlPreview.php'));
+
+    expect($source)->toContain('background: #ffffff')
+        ->and($source)->toContain('report-pdf-preview-sheet')
         ->and($source)->not->toContain('dark:bg-gray-900');
 });
 

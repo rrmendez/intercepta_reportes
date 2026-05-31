@@ -108,7 +108,10 @@ class VisitResource extends Resource
                                     ->options(fn (): array => BirdType::query()
                                         ->where('active', true)
                                         ->orderBy('name')
-                                        ->pluck('name', 'id')
+                                        ->get()
+                                        ->mapWithKeys(fn (BirdType $birdType): array => [
+                                            $birdType->id => trim($birdType->name.' — '.$birdType->common_name),
+                                        ])
                                         ->all())
                                     ->searchable()
                                     ->preload()

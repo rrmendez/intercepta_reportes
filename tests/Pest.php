@@ -1,5 +1,17 @@
 <?php
 
+use App\Models\BirdType;
+use App\Models\Client;
+use App\Models\Employee;
+use App\Models\Location;
+use App\Models\Report;
+use App\Models\Visit;
+use App\Models\VisitReport;
+use App\Services\ReportBladeStringRenderer;
+use App\Services\ReportPdfTemplateDefaults;
+use App\Services\Reports\ReportPeriodData;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use Tests\TestCase;
 
 /*
@@ -46,4 +58,62 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+function renderSingleSectorSingleBirdTemplateHtml(
+    Client $client,
+    string $dateFrom = '2026-03-01',
+    string $dateUntil = '2026-03-31',
+): string {
+    $report = Report::make([
+        'client_id' => $client->id,
+        'date_from' => $dateFrom,
+        'date_until' => $dateUntil,
+        'generated_at' => now(),
+    ])->setRelation('client', $client);
+
+    $period = app(ReportPeriodData::class)->load(
+        $client,
+        CarbonImmutable::parse($dateFrom),
+        CarbonImmutable::parse($dateUntil),
+        null,
+    );
+
+    return app(ReportBladeStringRenderer::class)->renderDocument(
+        ReportPdfTemplateDefaults::bladeSourceForClient($client),
+        $client,
+        $report,
+        $period,
+    );
+}
+
+/**
+ * @return Collection<int, VisitReport>
+ */
+function seedCurrentSituationVisitReports(
+    Client $client,
+    Location $location,
+    BirdType $birdType,
+    Employee $employee,
+    string $date,
+    int $quantity,
+    string $observation,
+): Collection {
+    $visit = Visit::query()->create([
+        'client_id' => $client->id,
+        'employee_id' => $employee->id,
+        'date_init' => "{$date} 17:00:00",
+        'date_end' => "{$date} 18:00:00",
+        'observation' => $observation,
+    ]);
+
+    return VisitReport::query()
+        ->whereKey(VisitReport::query()->create([
+            'visit_id' => $visit->id,
+            'location_id' => $location->id,
+            'bird_type_id' => $birdType->id,
+            'quantity' => $quantity,
+        ])->id)
+        ->with(['visit.employee', 'birdType'])
+        ->get();
 }

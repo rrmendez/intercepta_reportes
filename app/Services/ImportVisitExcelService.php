@@ -304,6 +304,21 @@ class ImportVisitExcelService
      */
     private function ensureProvisioningLocationsForMode(Client $client, ClientImportMode $mode, array $quantityColumns): void
     {
+        if ($mode === ClientImportMode::MultiSectorMultiBird) {
+            foreach ($this->normalizeCompactVisitPayload->sectionNamesForProvisioning($quantityColumns) as $sectionName) {
+                $name = $this->sanitizeProvisioningLocationName($client, $sectionName);
+                Location::query()->firstOrCreate(
+                    [
+                        'client_id' => $client->id,
+                        'name' => $name,
+                    ],
+                    ['active' => true],
+                );
+            }
+
+            return;
+        }
+
         if ($mode === ClientImportMode::MultiSectorSingleBird) {
             foreach ($quantityColumns as $header) {
                 $name = $this->sanitizeProvisioningLocationName($client, trim((string) $header));
@@ -343,7 +358,25 @@ class ImportVisitExcelService
             return $client->name.' (seccion)';
         }
 
-        return $header;
+        return $this->humanizeProvisioningSectionName($header);
+    }
+
+    private function humanizeProvisioningSectionName(string $value): string
+    {
+        $normalized = str_replace('_', ' ', mb_strtolower(trim($value)));
+
+        $words = array_values(array_filter(
+            preg_split('/\s+/u', $normalized) ?: [],
+            fn (string $word): bool => $word !== '',
+        ));
+
+        if ($words === []) {
+            return trim($value);
+        }
+
+        $words[0] = mb_strtoupper(mb_substr($words[0], 0, 1)).mb_substr($words[0], 1);
+
+        return implode(' ', $words);
     }
 
     /**

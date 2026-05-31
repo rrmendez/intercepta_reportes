@@ -1,5 +1,6 @@
 <?php
 
+use App\ClientImportMode;
 use App\Jobs\ProcessStoredVisitImportJob;
 use App\Models\BirdType;
 use App\Models\Client;
@@ -7,6 +8,7 @@ use App\Models\Location;
 use App\Models\User;
 use App\Models\Visit;
 use App\Models\VisitImport;
+use App\Services\BirdTypes\BirdTypeResolver;
 use App\Services\ImportVisitExcelService;
 use App\Services\VisitImport\Persistence\VisitImportPersistence;
 use Database\Seeders\BirdTypeSeeder;
@@ -18,6 +20,44 @@ uses(RefreshDatabase::class);
 
 beforeEach(function (): void {
     $this->seed(BirdTypeSeeder::class);
+});
+
+it('imports compact xlsx files when conteo values are stored as whole number floats', function () {
+    $client = Client::query()->create([
+        'name' => 'Urusal',
+        'active' => true,
+    ]);
+
+    Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Urusal',
+        'active' => true,
+    ]);
+
+    $xlsxPath = createTempCompactXlsxWithFloatQuantities();
+
+    try {
+        $preview = app(ImportVisitExcelService::class)->preview($xlsxPath, $client->id);
+
+        expect($preview['valid_rows'])->toBe(1)
+            ->and($preview['invalid_rows'])->toBe(0)
+            ->and($preview['errors'])->toBeEmpty();
+
+        $result = app(ImportVisitExcelService::class)->import($xlsxPath, $client->id);
+
+        expect($result['persisted_rows'])->toBe(1)
+            ->and($result['skipped_rows'])->toBe(0);
+
+        $visitReport = Visit::query()
+            ->with('visitReports')
+            ->firstOrFail()
+            ->visitReports
+            ->firstOrFail();
+
+        expect($visitReport->quantity)->toBe(1);
+    } finally {
+        @unlink($xlsxPath);
+    }
 });
 
 it('imports compact xlsx files with conteo for clients with a single location', function () {
@@ -159,7 +199,7 @@ it('creates client and section locations from compact csv when provision is true
         $client = Client::query()->where('name', 'Prov Test Corp')->firstOrFail();
         $named = $client->namedLocations()->orderBy('name')->pluck('name')->all();
 
-        expect(collect($named)->sort()->values()->all())->toBe(['conversiones', 'jumbos']);
+        expect(collect($named)->sort()->values()->all())->toBe(['Conversiones', 'Jumbos']);
 
         $visit = Visit::query()->where('client_id', $client->id)->with('visitReports.location')->firstOrFail();
         expect($visit->visitReports)->toHaveCount(2);
@@ -197,7 +237,7 @@ it('previews compact file without client when provision is enabled in context', 
 });
 
 it('rolls back the whole import when persist fails', function () {
-    $mock = Mockery::mock(VisitImportPersistence::class)->makePartial();
+    $mock = Mockery::mock(VisitImportPersistence::class, [app(BirdTypeResolver::class)])->makePartial();
     $mock->shouldReceive('persist')->andThrow(new RuntimeException('simulated'));
     app()->instance(VisitImportPersistence::class, $mock);
 
@@ -231,7 +271,7 @@ it('rolls back the whole import when persist fails', function () {
 });
 
 it('rolls back provisioned client and locations when persist fails', function () {
-    $mock = Mockery::mock(VisitImportPersistence::class)->makePartial();
+    $mock = Mockery::mock(VisitImportPersistence::class, [app(BirdTypeResolver::class)])->makePartial();
     $mock->shouldReceive('persist')->andThrow(new RuntimeException('simulated'));
     app()->instance(VisitImportPersistence::class, $mock);
 
@@ -311,7 +351,7 @@ it('provisions new client Cutcsa2 with sections when Cutsa and Cutcsa exist and 
         $newClient = Client::query()->where('name', 'Cutcsa2')->firstOrFail();
 
         $named = $newClient->namedLocations()->orderBy('name')->pluck('name')->all();
-        expect(collect($named)->sort()->values()->all())->toBe(['conversiones', 'jumbos']);
+        expect(collect($named)->sort()->values()->all())->toBe(['Conversiones', 'Jumbos']);
 
         $visit = Visit::query()->where('client_id', $newClient->id)->with('visitReports')->firstOrFail();
         expect($visit->visitReports)->toHaveCount(2);
@@ -678,6 +718,60 @@ it('fails compact conteo import when selected client has multiple active locatio
     }
 });
 
+function createTempCompactXlsxWithFloatQuantities(string $fileNamePrefix = 'visit-import-float-qty'): string
+{
+    $xlsxPath = storage_path('framework/testing/'.$fileNamePrefix.'-'.uniqid('', true).'.xlsx');
+
+    $worksheetXml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="s"><v>0</v></c>
+      <c r="B1" t="s"><v>1</v></c>
+      <c r="C1" t="s"><v>2</v></c>
+      <c r="D1" t="s"><v>3</v></c>
+      <c r="E1" t="s"><v>4</v></c>
+      <c r="F1" t="s"><v>5</v></c>
+    </row>
+    <row r="2">
+      <c r="A2" t="s"><v>6</v></c>
+      <c r="B2" t="s"><v>7</v></c>
+      <c r="C2" t="s"><v>8</v></c>
+      <c r="D2"><v>1.0</v></c>
+      <c r="E2" t="s"><v>9</v></c>
+      <c r="F2" t="s"><v>10</v></c>
+    </row>
+  </sheetData>
+</worksheet>
+XML;
+
+    $sharedStringsXml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="11" uniqueCount="11">
+  <si><t>Fecha</t></si>
+  <si><t>Entrada</t></si>
+  <si><t>Salida</t></si>
+  <si><t>Conteo</t></si>
+  <si><t>Observaciones</t></si>
+  <si><t>Nombre de usuario</t></si>
+  <si><t>8/4/2026</t></si>
+  <si><t>15:00</t></si>
+  <si><t>16:30</t></si>
+  <si><t>Se trabaja correctamente</t></si>
+  <si><t>Rodrigo</t></si>
+</sst>
+XML;
+
+    $zip = new ZipArchive;
+    $zip->open($xlsxPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+    $zip->addFromString('xl/worksheets/sheet1.xml', $worksheetXml);
+    $zip->addFromString('xl/sharedStrings.xml', $sharedStringsXml);
+    $zip->close();
+
+    return $xlsxPath;
+}
+
 function createTempCompactXlsx(string $fileNamePrefix = 'visit-import'): string
 {
     $xlsxPath = storage_path('framework/testing/'.$fileNamePrefix.'-'.uniqid('', true).'.xlsx');
@@ -909,20 +1003,25 @@ it('imports composite bird and section column headers', function () {
         'active' => true,
     ]);
 
-    Location::query()->create([
-        'client_id' => $client->id,
-        'name' => 'Exterior',
-        'active' => true,
+    foreach (['Exterior', 'Taller'] as $name) {
+        Location::query()->create([
+            'client_id' => $client->id,
+            'name' => $name,
+            'active' => true,
+        ]);
+    }
+
+    BirdType::factory()->create([
+        'slug' => 'gaviotas',
+        'name' => 'Gaviotas',
+        'common_name' => 'Gaviota',
+        'common_name_plural' => 'Gaviotas',
+        'scientific_name' => 'Larus dominicanus',
     ]);
 
-    BirdType::query()->firstOrCreate(
-        ['name' => 'Gaviotas'],
-        ['active' => true],
-    );
-
     $csvPath = createTempCsv(implode("\n", [
-        'Fecha,Entrada,Salida,Palomas Exterior,Gaviotas Exterior,Observaciones,Nombre de usuario',
-        '2026-04-10,08:00,09:30,4,1,Sin novedades,Marta',
+        'Fecha,Entrada,Salida,Palomas,Cotorras,Exterior,Taller,Palomas Exterior,Gaviotas Exterior,Observaciones,Nombre de usuario',
+        '2026-04-10,08:00,09:30,99,88,4,,2,1,Sin novedades,Marta',
     ]));
 
     try {
@@ -933,30 +1032,147 @@ it('imports composite bird and section column headers', function () {
         $reports = Visit::query()
             ->with('visitReports.birdType', 'visitReports.location')
             ->firstOrFail()
-            ->visitReports
-            ->sortBy(fn ($report): string => $report->birdType->name)
-            ->values();
+            ->visitReports;
 
-        expect($reports)->toHaveCount(2)
-            ->and($reports[0]->birdType->name)->toBe('Gaviotas')
-            ->and($reports[0]->location->name)->toBe('Exterior')
-            ->and($reports[1]->birdType->name)->toBe('Palomas')
-            ->and($reports[1]->location->name)->toBe('Exterior');
+        expect($reports)->toHaveCount(3);
+
+        $palomasExteriorSection = $reports->first(
+            fn ($report): bool => $report->birdType->name === 'Palomas'
+                && $report->location->name === 'Exterior'
+                && $report->quantity === 4,
+        );
+        $palomasExteriorComposite = $reports->first(
+            fn ($report): bool => $report->birdType->name === 'Palomas'
+                && $report->location->name === 'Exterior'
+                && $report->quantity === 2,
+        );
+        $gaviotasExterior = $reports->first(
+            fn ($report): bool => $report->birdType->name === 'Gaviotas' && $report->location->name === 'Exterior',
+        );
+
+        expect($palomasExteriorSection)->not->toBeNull()
+            ->and($palomasExteriorComposite)->not->toBeNull()
+            ->and($gaviotasExterior)->not->toBeNull()
+            ->and($gaviotasExterior->quantity)->toBe(1);
+    } finally {
+        @unlink($csvPath);
+    }
+});
+
+it('imports hybrid multi sector file with ignored bird columns palomas in sections and composite pairs', function () {
+    $client = Client::query()->create([
+        'name' => 'Cliente Hibrido',
+        'active' => true,
+    ]);
+
+    foreach ([
+        'Entradas',
+        'Silos',
+        'Techo',
+        'Trampa',
+        'Galpon',
+        'Exterior',
+        'Tanque de agua',
+    ] as $name) {
+        Location::query()->create([
+            'client_id' => $client->id,
+            'name' => $name,
+            'active' => true,
+        ]);
+    }
+
+    $csvPath = createTempCsv(implode("\n", [
+        'Fecha,Entrada,Salida,Palomas,Cotorras,Tordos,Entradas,Silos,Techo,Trampa,Galpon,Exterior,Cotorras Tanque de agua,Cotorras Exterior,Observaciones,Nombre de usuario',
+        '2026-04-10,08:00,09:30,99,88,77,1,2,,,3,4,5,6,Sin novedades,Marta',
+    ]));
+
+    try {
+        $result = app(ImportVisitExcelService::class)->import($csvPath, $client->id);
+
+        expect($result['persisted_rows'])->toBe(1);
+
+        $reports = Visit::query()
+            ->with('visitReports.birdType', 'visitReports.location')
+            ->firstOrFail()
+            ->visitReports;
+
+        expect($reports)->toHaveCount(6);
+
+        $palomasEntradas = $reports->first(
+            fn ($report): bool => $report->birdType->name === 'Palomas' && $report->location->name === 'Entradas',
+        );
+        $palomasExterior = $reports->first(
+            fn ($report): bool => $report->birdType->name === 'Palomas' && $report->location->name === 'Exterior',
+        );
+        $cotorrasTanque = $reports->first(
+            fn ($report): bool => $report->birdType->name === 'Cotorras' && $report->location->name === 'Tanque de agua',
+        );
+        $cotorrasExterior = $reports->first(
+            fn ($report): bool => $report->birdType->name === 'Cotorras' && $report->location->name === 'Exterior',
+        );
+
+        expect($palomasEntradas)->not->toBeNull()
+            ->and($palomasEntradas->quantity)->toBe(1)
+            ->and($palomasExterior)->not->toBeNull()
+            ->and($palomasExterior->quantity)->toBe(4)
+            ->and($cotorrasTanque)->not->toBeNull()
+            ->and($cotorrasTanque->quantity)->toBe(5)
+            ->and($cotorrasExterior)->not->toBeNull()
+            ->and($cotorrasExterior->quantity)->toBe(6);
+
+        expect($reports->contains(fn ($report): bool => $report->birdType->name === 'Tordos'))->toBeFalse();
+    } finally {
+        @unlink($csvPath);
+    }
+});
+
+it('provisions only real section names for hybrid multi sector multi bird files', function () {
+    $csvPath = storage_path('framework/testing/ProvHibrido_Corp_Constancia_de_Servicio_20260406-'.uniqid('', true).'.csv');
+    file_put_contents($csvPath, implode("\n", [
+        'Fecha,Entrada,Salida,Palomas,Cotorras,Tordos,Entradas,Silos,Techo,Trampa,Galpon,Exterior,Cotorras Tanque de agua,Cotorras Exterior,Observaciones,Nombre de usuario',
+        '2026-04-10,08:00,09:30,99,88,77,1,2,,,3,4,5,6,Sin novedades,Marta',
+    ]));
+
+    try {
+        $result = app(ImportVisitExcelService::class)->import($csvPath, null, [
+            'provision_client_and_sections' => true,
+        ]);
+
+        expect($result['persisted_rows'])->toBe(1);
+
+        $client = Client::query()->where('name', 'Prov Hibrido Corp')->firstOrFail();
+
+        expect($client->import_mode)->toBe(ClientImportMode::MultiSectorMultiBird);
+
+        $locationNames = $client->locations()->orderBy('name')->pluck('name')->all();
+
+        expect($locationNames)->toBe([
+            'Entradas',
+            'Exterior',
+            'Galpon',
+            'Silos',
+            'Tanque de agua',
+            'Techo',
+            'Trampa',
+        ])
+            ->and($locationNames)->not->toContain('palomas', 'cotorras', 'tordos', 'cotorras_exterior', 'cotorras_tanque_de_agua');
     } finally {
         @unlink($csvPath);
     }
 });
 
 it('resolves composite columns using longest location suffix first when parsing bird plus section headers', function () {
-    BirdType::query()->firstOrCreate(
-        ['name' => 'X'],
-        ['active' => true],
-    );
+    BirdType::factory()->create([
+        'slug' => 'x',
+        'name' => 'X',
+        'common_name' => 'X',
+    ]);
 
-    BirdType::query()->firstOrCreate(
-        ['name' => 'XB'],
-        ['active' => true],
-    );
+    BirdType::factory()->create([
+        'slug' => 'xb',
+        'name' => 'XB',
+        'common_name' => 'XB',
+    ]);
 
     $client = Client::query()->create([
         'name' => 'Cliente Composite Orden',
@@ -972,8 +1188,8 @@ it('resolves composite columns using longest location suffix first when parsing 
     }
 
     $csvPath = createTempCsv(implode("\n", [
-        'Fecha,Entrada,Salida,XBA,Observaciones,Nombre de usuario',
-        '2026-04-10,08:00,09:30,5,Sin novedades,Marta',
+        'Fecha,Entrada,Salida,Palomas,Cotorras,A,BA,XBA,Observaciones,Nombre de usuario',
+        '2026-04-10,08:00,09:30,,,,,5,Sin novedades,Marta',
     ]));
 
     try {
@@ -985,10 +1201,10 @@ it('resolves composite columns using longest location suffix first when parsing 
             ->with('visitReports.birdType', 'visitReports.location')
             ->firstOrFail()
             ->visitReports
-            ->firstOrFail();
+            ->first(fn ($report): bool => $report->birdType->name === 'X' && $report->location->name === 'BA');
 
-        expect($visitReport->birdType->name)->toBe('X')
-            ->and($visitReport->location->name)->toBe('BA');
+        expect($visitReport)->not->toBeNull()
+            ->and($visitReport->quantity)->toBe(5);
     } finally {
         @unlink($csvPath);
     }
@@ -1062,6 +1278,121 @@ it('surfaces preview errors for invalid integer quantities', function () {
 
         expect($preview['invalid_rows'])->toBe(1)
             ->and($preview['errors'])->not->toBeEmpty();
+    } finally {
+        @unlink($csvPath);
+    }
+});
+
+it('imports production hybrid header with galpon and canonical bird type ids', function () {
+    $client = Client::query()->create([
+        'name' => 'Cliente Produccion',
+        'active' => true,
+    ]);
+
+    foreach ([
+        'Entradas',
+        'Silos',
+        'Techo',
+        'Trampa',
+        'Galpón',
+        'Exterior',
+        'Tanque de agua',
+    ] as $name) {
+        Location::query()->create([
+            'client_id' => $client->id,
+            'name' => $name,
+            'active' => true,
+        ]);
+    }
+
+    $palomas = BirdType::query()->where('slug', 'palomas')->firstOrFail();
+    $cotorras = BirdType::query()->where('slug', 'cotorras')->firstOrFail();
+
+    $csvPath = createTempCsv(implode("\n", [
+        'Fecha,Entrada,Salida,Palomas,Cotorras,Tordos,Entradas,Silos,Techo,Trampa,Galpón,Exterior,Cotorras Tanque de agua,Cotorras Exterior,Observaciones,Nombre de usuario',
+        '2026-04-10,08:00,09:30,99,88,77,1,2,,,3,4,5,6,Sin novedades,Marta',
+    ]));
+
+    try {
+        $birdTypeCountBefore = BirdType::query()->count();
+
+        $result = app(ImportVisitExcelService::class)->import($csvPath, $client->id);
+
+        expect($result['persisted_rows'])->toBe(1)
+            ->and(BirdType::query()->count())->toBe($birdTypeCountBefore);
+
+        $reports = Visit::query()
+            ->with('visitReports.birdType', 'visitReports.location')
+            ->firstOrFail()
+            ->visitReports;
+
+        expect($reports->first(
+            fn ($report): bool => $report->birdType->is($palomas) && $report->location->name === 'Entradas',
+        ))->not->toBeNull()
+            ->and($reports->first(
+                fn ($report): bool => $report->birdType->is($cotorras) && $report->location->name === 'Tanque de agua',
+            ))->not->toBeNull();
+    } finally {
+        @unlink($csvPath);
+    }
+});
+
+it('resolves canonical bird type names from aliases in expanded rows', function () {
+    $client = Client::query()->create([
+        'name' => 'Cliente Alias',
+        'active' => true,
+    ]);
+
+    Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Predio',
+        'active' => true,
+    ]);
+
+    $palomas = BirdType::query()->where('slug', 'palomas')->firstOrFail();
+
+    $csvPath = createTempCsv(implode("\n", [
+        'client_name,employee_name,employee_email,date_init,date_end,status,location_name,bird_type_name,quantity,observation,visit_observation',
+        'Cliente Alias,Marta,,2026-04-10 08:00,2026-04-10 09:30,completed,Predio,Paloma doméstica,3,Sin novedades,Sin novedades',
+    ]));
+
+    try {
+        $result = app(ImportVisitExcelService::class)->import($csvPath, $client->id);
+
+        expect($result['persisted_rows'])->toBe(1);
+
+        $visitReport = Visit::query()->with('visitReports.birdType')->firstOrFail()->visitReports->first();
+
+        expect($visitReport->bird_type_id)->toBe($palomas->id);
+    } finally {
+        @unlink($csvPath);
+    }
+});
+
+it('marks rows invalid when canonical import references unknown bird type', function () {
+    $client = Client::query()->create([
+        'name' => 'Cliente Desconocido',
+        'active' => true,
+    ]);
+
+    Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Predio',
+        'active' => true,
+    ]);
+
+    $csvPath = createTempCsv(implode("\n", [
+        'client_name,employee_name,employee_email,date_init,date_end,status,location_name,bird_type_name,quantity,observation,visit_observation',
+        'Cliente Desconocido,Marta,,2026-04-10 08:00,2026-04-10 09:30,completed,Predio,DragonesInexistentes,3,Sin novedades,Sin novedades',
+    ]));
+
+    try {
+        $birdTypeCountBefore = BirdType::query()->count();
+
+        $preview = app(ImportVisitExcelService::class)->preview($csvPath, $client->id);
+
+        expect($preview['invalid_rows'])->toBe(1)
+            ->and(BirdType::query()->count())->toBe($birdTypeCountBefore);
     } finally {
         @unlink($csvPath);
     }

@@ -2,10 +2,12 @@
 
 namespace App\Filament\Resources\Clients\Pages;
 
+use App\ClientImportMode;
 use App\Filament\Pages\ImportVisitReports;
 use App\Filament\Resources\Clients\ClientResource;
 use App\Models\Client;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Support\Icons\Heroicon;
@@ -34,6 +36,17 @@ class ListClients extends ListRecords
                 ->label('Importar visitas')
                 ->icon(Heroicon::OutlinedArrowUpTray)
                 ->url(ImportVisitReports::getUrl()),
+            ActionGroup::make(
+                collect(ClientImportMode::cases())
+                    ->map(fn (ClientImportMode $mode): Action => Action::make('basePdfTemplate_'.$mode->value)
+                        ->label($mode->filamentLabel())
+                        ->icon(Heroicon::OutlinedDocumentText)
+                        ->url(ClientResource::baseTemplateUrl($mode)))
+                    ->all(),
+            )
+                ->label('Plantillas PDF base')
+                ->icon(Heroicon::OutlinedDocumentDuplicate)
+                ->button(),
         ];
     }
 }

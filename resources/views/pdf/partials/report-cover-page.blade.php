@@ -1,29 +1,27 @@
 {{--
     Portada del informe PDF.
 
-    Cabecera a sangre (sin margen superior ni lateral):
-    - public/images/header_reporte.png — franja que ocupa 1/3 del alto de la hoja A4 (297mm).
-
-    Luego: titulo, fila de marca Intercepta + linea dorada, subtitulo.
-
-    Logos BirdLife / AUC: pie fijo `report-pdf-fixed-footer` en la plantilla PDF (no en este partial).
-
-    Opcional desde Blade: $coverTitle, $coverSubtitle, $coverHeaderImageUrl (URL absoluta o asset).
-    Compatibilidad: $coverHeroUrl se usa como cabecera si no hay $coverHeaderImageUrl ni header_reporte.png.
+    Variables editables: $url_imagen_cabecera_portada, $url_logo_portada, $texto_alt_logo_portada.
+    Compatibilidad: $coverHeaderImageUrl, $coverHeroUrl.
 --}}
 @php
-    $coverTitle = $coverTitle ?? 'Informe del servicio de control de fauna';
-    $coverSubtitle = $coverSubtitle ?? 'CONTROL BIOLÓGICO DE FAUNA';
+    $texto_alt_logo_portada = $texto_alt_logo_portada ?? 'Intercepta Uruguay';
 
-    $resolvePublicAsset = static function (string $relativePublicPath): ?string {
-        $path = public_path($relativePublicPath);
+    $resolvePublicAsset = static function (?string $url): ?string {
+        if ($url !== null && $url !== '') {
+            return $url;
+        }
 
-        return is_string($path) && $path !== '' && is_file($path) ? asset($relativePublicPath) : null;
+        return null;
     };
 
-    $headerImageUrl = ($coverHeaderImageUrl ?? null)
-        ?? $resolvePublicAsset('images/header_reporte.png')
+    $headerImageUrl = $resolvePublicAsset($url_imagen_cabecera_portada ?? null)
+        ?? $resolvePublicAsset($coverHeaderImageUrl ?? null)
+        ?? (is_file(public_path('images/header_reporte.png')) ? asset('images/header_reporte.png') : null)
         ?? ($coverHeroUrl ?? null);
+
+    $logoPortadaUrl = $url_logo_portada ?? asset('images/intercepta-logo.svg');
+
     $coverPageHeightMm = 297
         - max(0, min(40, (int) config('services.report_pdf.margins_mm', 12)))
         - max(18, min(55, (int) config('services.report_pdf.chrome_footer_slot_mm', 28)));
@@ -155,20 +153,20 @@
     </div>
 
     <div class="report-cover__main">
-        <h1 class="report-cover__title">{{ $coverTitle }}</h1>
+        <h1 class="report-cover__title">Informe del servicio de control de fauna</h1>
 
         <div class="report-cover__brand-row">
             <div class="report-cover__brand-inner">
                 <img
                     class="report-cover__logo-img"
-                    src="{{ asset('images/intercepta-logo.svg') }}"
-                    alt="Intercepta Uruguay"
+                    src="{{ $logoPortadaUrl }}"
+                    alt="{{ $texto_alt_logo_portada }}"
                 >
                 <hr class="report-cover__gold-line">
             </div>
         </div>
 
-        <p class="report-cover__tagline">{{ $coverSubtitle }}</p>
+        <p class="report-cover__tagline">CONTROL BIOLÓGICO DE FAUNA</p>
     </div>
 
     <hr class="report-cover__divider">

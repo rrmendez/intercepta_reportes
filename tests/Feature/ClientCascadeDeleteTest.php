@@ -10,9 +10,14 @@ use App\Models\Template;
 use App\Models\Visit;
 use App\Models\VisitImport;
 use App\Models\VisitReport;
+use Database\Seeders\BirdTypeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function (): void {
+    $this->seed(BirdTypeSeeder::class);
+});
 
 it('deletes all records owned by a client', function (): void {
     $client = Client::query()->create([
@@ -25,10 +30,7 @@ it('deletes all records owned by a client', function (): void {
         'active' => true,
     ]);
 
-    $birdType = BirdType::query()->create([
-        'name' => 'Palomas',
-        'active' => true,
-    ]);
+    $birdType = BirdType::query()->where('slug', 'palomas')->firstOrFail();
 
     $location = Location::query()->create([
         'client_id' => $client->id,

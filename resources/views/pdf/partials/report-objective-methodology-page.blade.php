@@ -1,10 +1,14 @@
 {{--
     Segunda pagina normal del informe: objetivo, metodologia y registro del control de fauna.
-    La tabla toma los datos de `$visits`, que se editan desde la tabla superior del reporte.
+    La tabla toma los datos de $visitas / $columnas_visitas.
 --}}
 @php
-    $visitRows = collect($visits ?? [])->values();
-    $visitColumns = collect($visit_columns ?? [])->map(fn (array $column): array => [
+    $texto_objetivo = $texto_objetivo ?? 'El principal objetivo es disminuir la población inicial entre un 80% a un 90% en un período máximo de 3 meses. En una gran cantidad de casos se logra un control del 100% en este mismo período. De lo contrario, esta cifra puede alcanzarse en los meses siguientes.';
+    $texto_metodologia = $texto_metodologia ?? 'La metodología a usar es la cetrería, generalmente con esto ya es suficiente. Eventualmente se evaluará si es conveniente complementar con otros métodos (trampas específicas para palomas, drones, palos telescópicos para nidos, entre otros)';
+    $texto_sin_visitas_periodo = $texto_sin_visitas_periodo ?? 'No hay visitas para mostrar en el período seleccionado.';
+
+    $visitRows = collect($visitas ?? $visits ?? [])->values();
+    $visitColumns = collect($columnas_visitas ?? $visit_columns ?? [])->map(fn (array $column): array => [
         'key' => (string) ($column['key'] ?? ''),
         'label' => \Illuminate\Support\Str::ucfirst((string) ($column['label'] ?? ($column['key'] ?? ''))),
     ])->filter(fn (array $column): bool => $column['key'] !== '')->values();
@@ -98,17 +102,13 @@
     <h1 class="report-page-title">Objetivo y metodología</h1>
 
     <div class="report-objective-methodology-page__content">
-        <p>
-            El principal objetivo es disminuir la población inicial entre un 80% a un 90% en un período máximo de 3 meses.
-            En una gran cantidad de casos se logra un control del 100% en este mismo período. De lo contrario, esta cifra
-            puede alcanzarse en los meses siguientes.
-        </p>
+        @if ($texto_objetivo !== '')
+            <p>{{ $texto_objetivo }}</p>
+        @endif
 
-        <p>
-            La metodología a usar es la cetrería, generalmente con esto ya es suficiente. Eventualmente se evaluará si es
-            conveniente complementar con otros métodos (trampas específicas para palomas, drones, palos telescópicos para
-            nidos, entre otros)
-        </p>
+        @if ($texto_metodologia !== '')
+            <p>{{ $texto_metodologia }}</p>
+        @endif
 
         <h2 class="report-objective-methodology-page__subtitle">Registro del control de fauna</h2>
 
@@ -134,9 +134,7 @@
                 </table>
             </div>
         @else
-            <p class="report-objective-methodology-page__empty">
-                No hay visitas para mostrar en el período seleccionado.
-            </p>
+            <p class="report-objective-methodology-page__empty">{{ $texto_sin_visitas_periodo }}</p>
         @endif
     </div>
 </section>

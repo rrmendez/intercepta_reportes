@@ -1,13 +1,22 @@
 <?php
 
+use App\ClientImportMode;
+use App\Models\BirdType;
 use App\Models\Client;
+use App\Models\Employee;
+use App\Models\Location;
 use App\Models\Report;
 use App\ReportStatus;
 use App\Services\ReportBladeStringRenderer;
 use App\Services\Reports\ReportPeriodData;
+use Database\Seeders\BirdTypeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function (): void {
+    $this->seed(BirdTypeSeeder::class);
+});
 
 it('renders the report cover partial with title, brand and tagline', function (): void {
     $client = Client::query()->create([
@@ -70,6 +79,72 @@ it('renders the initial situation page with title, text and species table', func
         ->and($html)->toContain('Especies identificadas')
         ->and($html)->toContain('report-initial-situation-page__table')
         ->and($html)->toContain('Población significativa');
+});
+
+it('renders the single-bird initial situation page with two-column population table', function (): void {
+    $client = Client::query()->create([
+        'name' => 'Conaprole Planta Industrial Nº 11',
+        'active' => true,
+        'import_mode' => ClientImportMode::SingleSectorSingleBird,
+    ]);
+
+    $location = Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Planta central',
+        'active' => true,
+    ]);
+
+    $birdType = BirdType::query()->where('slug', 'palomas')->firstOrFail();
+
+    $employee = Employee::query()->create([
+        'name' => 'Manuel Maier',
+        'active' => true,
+    ]);
+
+    seedCurrentSituationVisitReports(
+        client: $client,
+        location: $location,
+        birdType: $birdType,
+        employee: $employee,
+        date: '2025-10-15',
+        quantity: 125,
+        observation: 'Relevamiento inicial',
+    );
+
+    seedCurrentSituationVisitReports(
+        client: $client,
+        location: $location,
+        birdType: $birdType,
+        employee: $employee,
+        date: '2026-03-24',
+        quantity: 1,
+        observation: 'Control realizado',
+    );
+
+    $html = renderSingleSectorSingleBirdTemplateHtml($client);
+
+    expect($html)->toContain('Tipo de ave')
+        ->and($html)->toContain('Población Inicial')
+        ->and($html)->toContain('Paloma doméstica (Columba livia)')
+        ->and($html)->toContain('125')
+        ->and($html)->not->toContain('Situación observada')
+        ->and($html)->not->toContain('Nombre científico');
+});
+
+it('renders the single-bird objective methodology page with fixed objective text', function (): void {
+    $client = Client::query()->create([
+        'name' => 'Cliente Demo',
+        'active' => true,
+        'import_mode' => ClientImportMode::SingleSectorSingleBird,
+    ]);
+
+    $html = renderSingleSectorSingleBirdTemplateHtml($client);
+
+    expect($html)->toContain('El principal objetivo es disminuir la población inicial entre un 80% a un 90%')
+        ->and($html)->toContain('En una gran cantidad de casos se logra un control del 100%')
+        ->and($html)->toContain('La metodología a usar es la cetrería')
+        ->and($html)->not->toContain('$texto_objetivo')
+        ->and($html)->not->toContain('$texto_metodologia');
 });
 
 it('renders the objective methodology page with visit rows table', function (): void {
@@ -175,7 +250,7 @@ it('renders fixed footer when the shipped pdf template includes the footer parti
 
     $period = app(ReportPeriodData::class)->load($client, '2026-03-01', '2026-03-31', $report);
 
-    $blade = (string) file_get_contents(resource_path('pdf-report-templates/default.blade.txt'));
+    $blade = (string) file_get_contents(resource_path('pdf-report-templates/default.blade.php'));
 
     $html = app(ReportBladeStringRenderer::class)->renderDocument($blade, $client, $report, $period);
 
@@ -186,19 +261,61 @@ it('renders fixed footer when the shipped pdf template includes the footer parti
 it('includes the cover and footer partials in shipped default pdf templates', function (): void {
     foreach ([
         'default',
-        'single_sector_single_bird',
-        'single_sector_multi_bird',
-        'multi_sector_single_bird',
-        'multi_sector_multi_bird',
     ] as $slug) {
-        $path = resource_path("pdf-report-templates/{$slug}.blade.txt");
+        $path = resource_path("pdf-report-templates/{$slug}.blade.php");
         $src = (string) file_get_contents($path);
         expect($src)->toContain("@include('pdf.partials.report-cover-page')")
             ->and($src)->toContain('pdf.partials.report-initial-situation-page')
             ->and($src)->toContain('pdf.partials.report-objective-methodology-page')
-            ->and($src)->toContain('pdf.partials.report-pdf-blank-pages')
+            ->and($src)->toContain('pdf.partials.report-contact-page')
+            ->and($src)->not->toContain('pdf.partials.report-pdf-blank-pages')
             ->and($src)->toContain('pdf.partials.report-pdf-fixed-footer');
     }
+
+    $singleBirdTemplate = (string) file_get_contents(resource_path('pdf-report-templates/single_sector_single_bird.blade.php'));
+
+    expect($singleBirdTemplate)->toContain('Situación inicial del predio')
+        ->and($singleBirdTemplate)->toContain('Objetivo y metodología')
+        ->and($singleBirdTemplate)->toContain('Informe del servicio de control de fauna')
+        ->and($singleBirdTemplate)->toContain('id="report-pdf-fixed-footer-root"')
+        ->and($singleBirdTemplate)->toContain('report-initial-situation-page')
+        ->and($singleBirdTemplate)->toContain('report-objective-methodology-page')
+        ->and($singleBirdTemplate)->not->toContain("@include('pdf.partials.report-cover-page')")
+        ->and($singleBirdTemplate)->not->toContain("@include('pdf.partials.report-pdf-fixed-footer')")
+        ->and($singleBirdTemplate)->not->toContain("@include('pdf.partials.report-initial-situation-page-single-bird')")
+        ->and($singleBirdTemplate)->not->toContain("@include('pdf.partials.report-objective-methodology-page-single-bird')")
+        ->and($singleBirdTemplate)->not->toContain("@include('pdf.partials.report-service-details-by-location-page-single-sector')")
+        ->and($singleBirdTemplate)->not->toContain("@include('pdf.partials.report-current-situation-and-conclusions-page-single-bird')")
+        ->and($singleBirdTemplate)->not->toContain("@include('pdf.partials.report-initial-situation-page')")
+        ->and($singleBirdTemplate)->not->toContain("@include('pdf.partials.report-objective-methodology-page')");
+
+    $multiBirdTemplate = (string) file_get_contents(resource_path('pdf-report-templates/single_sector_multi_bird.blade.php'));
+
+    expect($multiBirdTemplate)->toContain('se registró la presencia de otras especies de aves en el predio')
+        ->and($multiBirdTemplate)->toContain('$especies_identificadas_linea')
+        ->and($multiBirdTemplate)->toContain('Situación inicial del predio')
+        ->and($multiBirdTemplate)->toContain('Objetivo y metodología')
+        ->and($multiBirdTemplate)->toContain('Informe del servicio de control de fauna')
+        ->and($multiBirdTemplate)->toContain('id="report-pdf-fixed-footer-root"')
+        ->and($multiBirdTemplate)->toContain("@include('pdf.partials.single-sector-multi-bird-head')")
+        ->and($multiBirdTemplate)->not->toContain("@include('pdf.partials.report-cover-page')")
+        ->and($multiBirdTemplate)->not->toContain("@include('pdf.partials.report-pdf-fixed-footer')")
+        ->and($multiBirdTemplate)->not->toContain("@include('pdf.partials.single-sector-single-bird-head')");
+
+    $multiSectorMultiBirdTemplate = (string) file_get_contents(resource_path('pdf-report-templates/multi_sector_multi_bird.blade.php'));
+
+    expect($multiSectorMultiBirdTemplate)->toContain('se registró la presencia de otras especies de aves en el predio')
+        ->and($multiSectorMultiBirdTemplate)->toContain('$especies_identificadas_linea')
+        ->and($multiSectorMultiBirdTemplate)->toContain('$tablaPoblacionInicialPorAve')
+        ->and($multiSectorMultiBirdTemplate)->toContain('Situación inicial del predio')
+        ->and($multiSectorMultiBirdTemplate)->toContain('Objetivo y metodología')
+        ->and($multiSectorMultiBirdTemplate)->toContain('Informe del servicio de control de fauna')
+        ->and($multiSectorMultiBirdTemplate)->toContain('id="report-pdf-fixed-footer-root"')
+        ->and($multiSectorMultiBirdTemplate)->toContain('report-initial-situation-page')
+        ->and($multiSectorMultiBirdTemplate)->toContain("@include('pdf.partials.multi-sector-multi-bird-head')")
+        ->and($multiSectorMultiBirdTemplate)->not->toContain("@include('pdf.partials.report-cover-page')")
+        ->and($multiSectorMultiBirdTemplate)->not->toContain("@include('pdf.partials.report-pdf-fixed-footer')")
+        ->and($multiSectorMultiBirdTemplate)->not->toContain("@include('pdf.partials.single-sector-single-bird-head')");
 });
 
 it('renders five blank letter pages for pdf tail placeholders', function (): void {

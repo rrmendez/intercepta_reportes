@@ -7,6 +7,7 @@ namespace App\Services\Reports;
 use App\Models\VisitReport;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 
 final class ReportChartSeriesBuilder
@@ -28,12 +29,133 @@ final class ReportChartSeriesBuilder
     ];
 
     /**
+     * @param  Collection<int, VisitReport>  $periodVisitReports
+     * @param  Collection<int, VisitReport>  $historicalVisitReports
+     * @return array{charts: list<array{id: string, title: string, labels: list<string>, datasets: list<array<string, mixed>>, scales?: array<string, array<string, mixed>>}>}
+     */
+    public function buildFaunaEvolutionCharts(
+        Collection $periodVisitReports,
+        Collection $historicalVisitReports,
+    ): array {
+        if ($periodVisitReports instanceof EloquentCollection && $periodVisitReports->isNotEmpty()) {
+            $periodVisitReports->loadMissing(['visit', 'birdType']);
+        }
+
+        if ($historicalVisitReports instanceof EloquentCollection && $historicalVisitReports->isNotEmpty()) {
+            $historicalVisitReports->loadMissing(['visit', 'birdType']);
+        }
+
+        $periodBuilt = $this->buildBirdCountsByVisitDay($periodVisitReports);
+        $historicalBuilt = $this->buildBirdCountsByVisitDay($historicalVisitReports);
+
+        return [
+            'charts' => [
+                $this->faunaEvolutionChartDefinition(
+                    id: 'report-chart-fauna-period',
+                    subtitle: 'Conteos de aves',
+                    labels: $periodBuilt['labels'],
+                    dayKeys: $periodBuilt['day_keys'],
+                    matrix: $periodBuilt['matrix'],
+                ),
+                $this->faunaEvolutionChartDefinition(
+                    id: 'report-chart-fauna-historical',
+                    subtitle: 'Conteos de aves (historico)',
+                    labels: $historicalBuilt['labels'],
+                    dayKeys: $historicalBuilt['day_keys'],
+                    matrix: $historicalBuilt['matrix'],
+                ),
+            ],
+        ];
+    }
+
+    /**
+     * @param  list<string>  $labels
+     * @param  list<string>  $dayKeys
+     * @param  array<string, array<string, int>>  $matrix
+     * @return array{id: string, title: string, labels: list<string>, datasets: list<array<string, mixed>>, x_axis_label: string, y_axis_label: string}
+     */
+    private function faunaEvolutionChartDefinition(
+        string $id,
+        string $subtitle,
+        array $labels,
+        array $dayKeys,
+        array $matrix,
+    ): array {
+        return [
+            'id' => $id,
+            'title' => $subtitle,
+            'display_title' => false,
+            'labels' => $labels,
+            'datasets' => $this->datasetsFromMatrix($matrix, $dayKeys),
+            'x_axis_label' => 'Fecha',
+            'y_axis_label' => 'Cantidad',
+        ];
+    }
+
+    /**
+     * @param  Collection<int, VisitReport>  $visitReports
+     * @return array{labels: list<string>, day_keys: list<string>, matrix: array<string, array<string, int>>}
+     */
+    private function buildBirdCountsByVisitDay(Collection $visitReports): array
+    {
+        /** @var array<string, true> $dayKeySet */
+        $dayKeySet = [];
+        /** @var array<string, array<string, int>> $matrix */
+        $matrix = [];
+
+        foreach ($visitReports as $report) {
+            $visitDate = $report->visit?->date_init;
+
+            if ($visitDate === null) {
+                continue;
+            }
+
+            $birdName = trim((string) ($report->birdType?->name ?? ''));
+
+            if ($birdName === '') {
+                $birdName = 'Sin tipo';
+            }
+
+            $dayKey = CarbonImmutable::parse($visitDate)->toDateString();
+            $dayKeySet[$dayKey] = true;
+
+            if (! isset($matrix[$birdName])) {
+                $matrix[$birdName] = [];
+            }
+
+            $matrix[$birdName][$dayKey] = ($matrix[$birdName][$dayKey] ?? 0) + (int) $report->quantity;
+        }
+
+        $dayKeys = array_keys($dayKeySet);
+        sort($dayKeys);
+
+        foreach ($matrix as $birdName => $pointsByDay) {
+            foreach ($dayKeys as $dayKey) {
+                if (! array_key_exists($dayKey, $pointsByDay)) {
+                    $matrix[$birdName][$dayKey] = 0;
+                }
+            }
+        }
+
+        $labels = array_map(
+            fn (string $dayKey): string => CarbonImmutable::parse($dayKey)->format('d/m/Y'),
+            $dayKeys,
+        );
+
+        return [
+            'labels' => $labels,
+            'day_keys' => $dayKeys,
+            'matrix' => $matrix,
+        ];
+    }
+
+    /**
      * @param  Collection<int, VisitReport>  $visitReports
      * @return array{charts: list<array{id: string, title: string, labels: list<string>, datasets: list<array<string, mixed>>}>}
      */
     public function build(Collection $visitReports, CarbonInterface|string $dateFrom, CarbonInterface|string $dateUntil): array
     {
-        if ($visitReports->isNotEmpty()) {
+        if ($visitReports instanceof EloquentCollection && $visitReports->isNotEmpty()) {
             $visitReports->loadMissing(['visit', 'location', 'birdType']);
         }
 

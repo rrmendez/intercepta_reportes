@@ -51,7 +51,7 @@ class ImportVisitReports extends Page
      */
     public ?array $data = [];
 
-    public static function canAccess(): bool
+    public static function canAccess(array $parameters = []): bool
     {
         return auth()->user()?->isAdmin() || auth()->user()?->isOperator();
     }

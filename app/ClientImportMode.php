@@ -19,6 +19,16 @@ enum ClientImportMode: string
         };
     }
 
+    public function filamentLabel(): string
+    {
+        return match ($this) {
+            self::SingleSectorSingleBird => 'Sector único, ave única',
+            self::SingleSectorMultiBird => 'Sector único, múltiples aves',
+            self::MultiSectorSingleBird => 'Múltiples sectores, ave única',
+            self::MultiSectorMultiBird => 'Múltiples sectores, múltiples aves',
+        };
+    }
+
     public function usesSingleSector(): bool
     {
         return in_array($this, [

@@ -4,21 +4,20 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\ClientImportMode;
 use App\Contracts\HtmlToPdfConverter;
-use App\Models\Client;
-use App\Models\Report;
+use App\Services\DevPdfReportSample;
 use App\Services\ReportBladeStringRenderer;
 use App\Services\ReportPdfDocumentHtml;
-use App\Services\TemplateRichContent;
-use Carbon\CarbonImmutable;
+use App\Services\ReportPdfTemplateDefaults;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Collection;
 
 /**
  * Vista previa del PDF con datos fijos (solo entorno local).
  *
  * GET /dev/pdf-sample — HTML (por defecto)
+ * GET /dev/pdf-sample?template=single_sector_single_bird — plantilla una zona / una ave (Conaprole)
  * GET /dev/pdf-sample?mode=pdf — PDF binario (Chromium / Browsershot)
  * GET /dev/pdf-sample?debug_margins=1 — bordes de depuracion (html/body/pie; en PDF tambien el contenedor del footerTemplate)
  */
@@ -31,82 +30,26 @@ final class DevPdfSamplePreviewController extends Controller
     ): Response {
         abort_unless(app()->isLocal(), 404);
 
-        $client = Client::make([
-            'id' => 1,
-            'name' => 'Cliente demostración S.A.',
-            'address' => 'Av. 18 de Julio 1234, Montevideo',
-            'active' => true,
-        ]);
+        $mode = ClientImportMode::tryFrom((string) $request->query('template', ''))
+            ?? ClientImportMode::SingleSectorSingleBird;
 
-        $report = Report::make([
-            'id' => 99,
-            'client_id' => 1,
-            'month' => 1,
-            'year' => 2026,
-            'date_from' => '2026-01-01',
-            'date_until' => '2026-01-31',
-        ])->setRelation('client', $client);
+        $sample = DevPdfReportSample::build($mode);
+        $client = $sample['client'];
+        $report = $sample['report'];
+        $period = $sample['period'];
+        $periodLabel = (string) $period['period_label'];
 
-        $report->setAttribute('generated_at', CarbonImmutable::parse('2026-05-14 10:30:00'));
-
-        $periodLabel = 'enero 2026';
-        $visits = new Collection;
-        $visitReports = new Collection;
-        $aggregations = TemplateRichContent::aggregations($visitReports);
-
-        $richContentData = array_merge(
-            TemplateRichContent::reportData(
-                client: $client,
-                periodLabel: $periodLabel,
-                visits: $visits,
-                visitReports: $visitReports,
-                aggregations: $aggregations,
-                report: $report,
-            ),
-            [
-                'visits_count' => 7,
-                'total_observations' => 24,
-                'total_quantity' => 156,
-                'totals_by_bird_type' => [
-                    'Paloma doméstica' => 88,
-                    'Gaviota cocinera' => 42,
-                ],
-                'totals_by_location' => [
-                    'Planta industrial — sector norte' => 70,
-                    'Planta industrial — sector sur' => 60,
-                ],
-            ],
-        );
-
-        $from = CarbonImmutable::parse('2026-01-01')->startOfDay();
-        $until = CarbonImmutable::parse('2026-01-31')->endOfDay();
-
-        $period = [
-            'client' => $client,
-            'date_from' => $from,
-            'date_until' => $until,
-            'period_label' => $periodLabel,
-            'visits' => $visits,
-            'visit_reports' => $visitReports,
-            'aggregations' => [
-                'totals_by_bird_type' => $richContentData['totals_by_bird_type'],
-                'totals_by_location' => $richContentData['totals_by_location'],
-            ],
-            'rich_content_data' => $richContentData,
-            'snapshot' => [
-                'period' => $periodLabel,
-                'visits_count' => 7,
-            ],
-        ];
-
-        $bladePath = resource_path('pdf-report-templates/default.blade.txt');
-        $blade = is_readable($bladePath) ? (string) file_get_contents($bladePath) : '';
+        $blade = ReportPdfTemplateDefaults::bladeSourceForClient($client);
 
         $html = $bladeRenderer->renderDocument($blade, $client, $report, $period);
 
         $debugMargins = $request->boolean('debug_margins');
         if ($debugMargins) {
             $html = $this->injectDocumentMarginDebugCss($html);
+        }
+
+        if ($request->query('mode') !== 'pdf') {
+            $html = $this->injectDevPreviewToolbar($html, $mode, $debugMargins);
         }
 
         $chromeFooterHtml = view('pdf.partials.report-pdf-chrome-footer-template', [
@@ -129,11 +72,55 @@ final class DevPdfSamplePreviewController extends Controller
                 'chrome_footer_html' => $chromeFooterHtml,
             ]), 200, [
                 'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'inline; filename="muestra-informe.pdf"',
+                'Content-Disposition' => 'inline; filename="muestra-informe-'.$mode->value.'.pdf"',
             ]);
         }
 
         return response($html, 200)->header('Content-Type', 'text/html; charset=UTF-8');
+    }
+
+    private function injectDevPreviewToolbar(string $html, ClientImportMode $mode, bool $debugMargins): string
+    {
+        $query = [
+            'template' => $mode->value,
+        ];
+
+        if ($debugMargins) {
+            $query['debug_margins'] = '1';
+        }
+
+        $htmlUrl = route('dev.pdf-sample', $query);
+        $pdfUrl = route('dev.pdf-sample', array_merge($query, ['mode' => 'pdf']));
+        $debugUrl = route('dev.pdf-sample', array_merge($query, ['debug_margins' => '1']));
+
+        $templateOptions = collect(ClientImportMode::cases())
+            ->map(function (ClientImportMode $option) use ($mode, $debugMargins): string {
+                $params = ['template' => $option->value];
+                if ($debugMargins) {
+                    $params['debug_margins'] = '1';
+                }
+                $url = route('dev.pdf-sample', $params);
+                $selected = $option === $mode ? ' selected' : '';
+
+                return '<option value="'.e($url).'"'.$selected.'>'.e($option->label()).'</option>';
+            })
+            ->implode('');
+
+        $toolbar = <<<HTML
+<div id="dev-pdf-preview-toolbar" style="position:fixed;top:0;left:0;right:0;z-index:99999;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;background:#111827;color:#f9fafb;font:13px/1.4 system-ui,sans-serif;border-bottom:2px solid #e8b14c;box-shadow:0 4px 16px rgba(0,0,0,.25);">
+    <strong style="margin-right:4px;">Dev PDF</strong>
+    <label style="display:flex;align-items:center;gap:6px;">
+        <span>Plantilla</span>
+        <select onchange="window.location.href=this.value" style="padding:4px 8px;border-radius:4px;border:1px solid #374151;background:#1f2937;color:#f9fafb;max-width:280px;">{$templateOptions}</select>
+    </label>
+    <a href="{$htmlUrl}" style="color:#fbbf24;">HTML</a>
+    <a href="{$pdfUrl}" target="_blank" rel="noopener" style="color:#fbbf24;">PDF</a>
+    <a href="{$debugUrl}" style="color:#93c5fd;">Márgenes debug</a>
+    <span style="opacity:.75;margin-left:auto;">Referencia: Informe final una zona un ave.pdf</span>
+</div>
+HTML;
+
+        return $this->insertAfterOpeningBody($html, $toolbar.'<div style="display:block;height:52px;" aria-hidden="true"></div>');
     }
 
     /**
@@ -188,6 +175,18 @@ HTML;
             $replaced = preg_replace('/<\/head\s*>/i', $injection.'</head>', $html, 1);
 
             return is_string($replaced) ? $replaced : $html;
+        }
+
+        return $injection.$html;
+    }
+
+    private function insertAfterOpeningBody(string $html, string $injection): string
+    {
+        if (preg_match('/<body[^>]*>/i', $html, $matches, PREG_OFFSET_CAPTURE) === 1) {
+            $tag = $matches[0][0];
+            $position = $matches[0][1] + strlen($tag);
+
+            return substr($html, 0, $position).$injection.substr($html, $position);
         }
 
         return $injection.$html;

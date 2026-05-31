@@ -9,21 +9,86 @@ use App\Models\Client;
 
 final class ReportPdfTemplateDefaults
 {
+    private const int MAX_INCLUDE_EXPANSION_DEPTH = 25;
+
+    /**
+     * Partials kept as @include in the editor (styles / head bulk).
+     *
+     * @var list<string>
+     */
+    private const array EDITOR_COLLAPSED_PARTIALS = [
+        'single-sector-single-bird-head',
+        'single-sector-multi-bird-head',
+        'multi-sector-multi-bird-head',
+    ];
+
     public static function editableBladeSource(string $source): string
     {
-        return self::expandEditableContentPageIncludes($source);
+        return self::expandPartialIncludes($source, self::MAX_INCLUDE_EXPANSION_DEPTH, self::EDITOR_COLLAPSED_PARTIALS);
+    }
+
+    public static function basicExpandedSourceForClient(Client $client): string
+    {
+        $mode = $client->import_mode ?? ClientImportMode::MultiSectorSingleBird;
+
+        return self::basicExpandedSourceForMode($mode);
+    }
+
+    public static function basicExpandedSourceForMode(ClientImportMode $mode): string
+    {
+        return self::expandPartialIncludes(
+            self::bladeSourceForMode($mode),
+            self::MAX_INCLUDE_EXPANSION_DEPTH,
+            self::EDITOR_COLLAPSED_PARTIALS,
+        );
+    }
+
+    public static function expandPartialIncludes(
+        string $source,
+        int $maxDepth = self::MAX_INCLUDE_EXPANSION_DEPTH,
+        array $except = [],
+    ): string {
+        $pattern = '/@include\s*\(\s*(["\'])pdf\.partials\.([^"\']+)\1(?:\s*,\s*\[(?:[^\[\]]|\[[^\]]*\])*\])?\s*\)/s';
+
+        for ($depth = 0; $depth < $maxDepth; $depth++) {
+            $expanded = preg_replace_callback(
+                $pattern,
+                static function (array $matches) use ($except): string {
+                    if (in_array($matches[2], $except, true)) {
+                        return $matches[0];
+                    }
+
+                    return self::partialSource($matches[2]);
+                },
+                $source,
+            );
+
+            if (! is_string($expanded) || $expanded === $source) {
+                break;
+            }
+
+            $source = $expanded;
+        }
+
+        return $source;
     }
 
     public static function bladeSourceForClient(Client $client): string
     {
         $mode = $client->import_mode ?? ClientImportMode::MultiSectorSingleBird;
-        $specific = resource_path("pdf-report-templates/{$mode->value}.blade.txt");
+
+        return self::bladeSourceForMode($mode);
+    }
+
+    public static function bladeSourceForMode(ClientImportMode $mode): string
+    {
+        $specific = resource_path("pdf-report-templates/{$mode->value}.blade.php");
 
         if (is_readable($specific)) {
             return (string) file_get_contents($specific);
         }
 
-        $default = resource_path('pdf-report-templates/default.blade.txt');
+        $default = resource_path('pdf-report-templates/default.blade.php');
 
         if (is_readable($default)) {
             return (string) file_get_contents($default);
@@ -44,7 +109,7 @@ final class ReportPdfTemplateDefaults
 <body>
     @include('pdf.partials.report-cover-page')
 
-    @include('pdf.partials.report-pdf-blank-pages')
+    @include('pdf.partials.report-contact-page')
 
     @include('pdf.partials.report-pdf-fixed-footer', [
         'client' => $client,
@@ -60,6 +125,11 @@ BLADE;
     {
         $mode = $client->import_mode ?? ClientImportMode::MultiSectorSingleBird;
 
+        return self::suggestedNameForMode($mode);
+    }
+
+    public static function suggestedNameForMode(ClientImportMode $mode): string
+    {
         return match ($mode) {
             ClientImportMode::SingleSectorSingleBird => 'Plantilla PDF - sector unico / ave unica',
             ClientImportMode::SingleSectorMultiBird => 'Plantilla PDF - sector unico / multiples aves',
@@ -68,32 +138,27 @@ BLADE;
         };
     }
 
-    private static function expandEditableContentPageIncludes(string $source): string
+    private static function partialSource(string $partial): string
     {
-        $partials = [
-            'report-initial-situation-page',
-            'report-objective-methodology-page',
-        ];
+        $partial = trim($partial);
 
-        foreach ($partials as $partial) {
-            $source = preg_replace_callback(
-                '/^[ \t]*@include\((["\'])pdf\.partials\.'.preg_quote($partial, '/').'\1\)[ \t]*$/m',
-                static fn (): string => self::editableContentPageSource($partial),
-                $source,
-            ) ?? $source;
+        if ($partial === '' || str_contains($partial, '..') || str_contains($partial, '/')) {
+            return "@include('pdf.partials.{$partial}')";
         }
 
-        return $source;
-    }
-
-    private static function editableContentPageSource(string $partial): string
-    {
         $path = resource_path("views/pdf/partials/{$partial}.blade.php");
 
         if (! is_readable($path)) {
             return "@include('pdf.partials.{$partial}')";
         }
 
-        return rtrim((string) file_get_contents($path));
+        return self::stripBladeComments(rtrim((string) file_get_contents($path)));
+    }
+
+    private static function stripBladeComments(string $source): string
+    {
+        $stripped = preg_replace('/\{\{--(?:[^-]|-(?!-\}))*--\}\}/s', '', $source);
+
+        return is_string($stripped) ? $stripped : $source;
     }
 }

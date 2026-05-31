@@ -26,6 +26,29 @@ HTML;
         ->and($out)->toContain('Contenido');
 });
 
+it('keeps unified document stylesheets when removing embedded fixed footer', function (): void {
+    $html = <<<'HTML'
+<!DOCTYPE html>
+<html lang="es"><head>
+<style>
+.report-page-title { color: rgb(232, 177, 76); }
+.report-pdf-fixed-footer__bar { position: fixed; }
+</style>
+</head>
+<body>
+<p>Contenido</p>
+<div id="report-pdf-fixed-footer-root"><span>Pie</span></div>
+</body></html>
+HTML;
+
+    $out = ReportPdfDocumentHtml::withoutEmbeddedFixedFooter($html);
+
+    expect($out)->not->toContain('report-pdf-fixed-footer-root')
+        ->and($out)->toContain('report-page-title')
+        ->and($out)->toContain('report-pdf-fixed-footer__bar')
+        ->and($out)->toContain('Contenido');
+});
+
 it('injects the default normal page header after the body opening tag', function (): void {
     $html = <<<'HTML'
 <!DOCTYPE html>

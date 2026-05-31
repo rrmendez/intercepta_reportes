@@ -6,18 +6,22 @@ use App\ClientImportMode;
 use App\Models\BirdType;
 use App\Models\Client;
 use App\Models\Location;
+use App\Services\BirdTypes\BirdTypeResolver;
+use App\Services\BirdTypes\BirdTypeTokenNormalizer;
 use App\Services\VisitImport\Validation\VisitImportStructureValidator;
 use App\Services\VisitImport\VisitImportPayload;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 final class NormalizeCompactVisitPayloadAction
 {
     private const string COMPACT_SINGLE_LOCATION_COLUMN = 'conteo';
 
-    private const string DEFAULT_BIRD_TYPE_NAME = 'Palomas';
-
     private const string DEFAULT_STATUS = 'completed';
+
+    public function __construct(
+        private readonly BirdTypeResolver $birdTypeResolver,
+        private readonly BirdTypeTokenNormalizer $tokenNormalizer,
+    ) {}
 
     /**
      * @param  array<int, string>  $quantityColumns
@@ -74,6 +78,30 @@ final class NormalizeCompactVisitPayloadAction
 
     /**
      * @param  array<int, string>  $quantityColumns
+     * @return array<int, string>
+     */
+    public function sectionNamesForProvisioning(array $quantityColumns): array
+    {
+        $classification = $this->classifyHybridMultiSectorColumnsForProvisioning(
+            $quantityColumns,
+            $this->birdTypeTokenToName(),
+        );
+
+        /** @var array<int, string> $names */
+        $names = collect($classification['section_columns'])
+            ->values()
+            ->merge(collect($classification['composite_columns'])->map(fn (array $pair): string => $pair[1]))
+            ->map(fn (string $name): string => trim($name))
+            ->filter(fn (string $name): bool => $name !== '')
+            ->unique()
+            ->values()
+            ->all();
+
+        return $names;
+    }
+
+    /**
+     * @param  array<int, string>  $quantityColumns
      */
     private function inferModeFromColumns(Client $client, array $quantityColumns, bool $provision): ClientImportMode
     {
@@ -90,6 +118,10 @@ final class NormalizeCompactVisitPayloadAction
         $birdByToken = $this->birdTypeTokenToName();
         $locationByToken = $this->namedLocationTokenToNameMapForInference($client, $provision);
 
+        if ($this->isHybridMultiSectorMultiBirdFormat($quantityColumns, $birdByToken, $locationByToken, $provision)) {
+            return ClientImportMode::MultiSectorMultiBird;
+        }
+
         $allLocationColumns = $locationByToken !== [] && collect($quantityColumns)
             ->every(fn (string $column): bool => array_key_exists($this->normalizeLocationToken($column), $locationByToken));
 
@@ -100,23 +132,8 @@ final class NormalizeCompactVisitPayloadAction
         $allBirdColumns = collect($quantityColumns)
             ->every(fn (string $column): bool => array_key_exists($this->normalizeLocationToken($column), $birdByToken));
 
-        $anyKnownLocation = $locationByToken !== [] && collect($quantityColumns)
-            ->contains(fn (string $column): bool => array_key_exists($this->normalizeLocationToken($column), $locationByToken));
-
-        if ($anyKnownLocation && ! $allBirdColumns) {
-            return ClientImportMode::MultiSectorSingleBird;
-        }
-
         if ($allBirdColumns) {
             return ClientImportMode::SingleSectorMultiBird;
-        }
-
-        $compositeResolved = collect($quantityColumns)
-            ->map(fn (string $column): ?array => $this->resolveCompositeColumn($column, $birdByToken, $locationByToken))
-            ->all();
-
-        if (! in_array(null, $compositeResolved, true)) {
-            return ClientImportMode::MultiSectorMultiBird;
         }
 
         if ($provision && $locationByToken === [] && ! $allBirdColumns) {
@@ -130,14 +147,23 @@ final class NormalizeCompactVisitPayloadAction
             return ClientImportMode::SingleSectorMultiBird;
         }
 
+        $classification = $this->classifyHybridMultiSectorColumns(
+            $quantityColumns,
+            $birdByToken,
+            $locationByToken,
+            strict: false,
+        );
+
         $unknown = collect($quantityColumns)
-            ->filter(fn (string $column, int $index): bool => $compositeResolved[$index] === null)
+            ->reject(fn (string $column): bool => in_array($column, $classification['bird_only_columns'], true)
+                || array_key_exists($column, $classification['section_columns'])
+                || array_key_exists($column, $classification['composite_columns']))
             ->values()
             ->all();
 
         throw ValidationException::withMessages([
             'file' => [
-                'Las columnas intermedias deben coincidir con secciones del cliente, tipos de ave conocidos, o pares TipoSeccion: '.implode(', ', $unknown).'.',
+                'Las columnas intermedias deben coincidir con secciones del cliente, tipos de ave (bloque inicial ignorado), secciones sin ave (Palomas), o pares ave+seccion: '.implode(', ', $unknown).'.',
             ],
         ]);
     }
@@ -427,27 +453,21 @@ final class NormalizeCompactVisitPayloadAction
         $requiredColumns = VisitImportStructureValidator::requiredColumns();
         $birdByToken = $this->birdTypeTokenToName();
         $locationByToken = $this->namedLocationTokenToName($client);
+        $defaultBirdName = $this->defaultBirdTypeName();
 
-        $resolvedColumns = [];
+        $classification = $this->classifyHybridMultiSectorColumns(
+            $quantityColumns,
+            $birdByToken,
+            $locationByToken,
+        );
 
-        foreach ($quantityColumns as $column) {
-            $pair = $this->resolveCompositeColumn($column, $birdByToken, $locationByToken);
+        foreach ($locationByToken as $token => $locationName) {
+            $hasColumn = collect($classification['section_columns'])
+                ->contains(fn (string $resolvedLocationName): bool => $resolvedLocationName === $locationName);
 
-            if ($pair === null) {
-                throw ValidationException::withMessages([
-                    'file' => [
-                        'No se pudo interpretar la columna compuesta "'.$column.'" como tipo de ave + seccion.',
-                    ],
-                ]);
+            if (! $hasColumn) {
+                $warnings[] = 'No hay columna para la seccion "'.$locationName.'"; se importara solo la informacion presente en el archivo.';
             }
-
-            $resolvedColumns[$column] = $pair;
-        }
-
-        $expectedPairCount = count($locationByToken) * max(count($birdByToken), 1);
-
-        if (count($resolvedColumns) < $expectedPairCount) {
-            $warnings[] = 'El archivo no incluye columnas para todas las combinaciones de seccion y tipo de ave; se importara solo la informacion presente.';
         }
 
         $expandedRows = collect();
@@ -459,9 +479,31 @@ final class NormalizeCompactVisitPayloadAction
             $compactRow = $this->rowToMap($payload->headers, $row);
             $sourceRowGroup = $payload->rowGroupAt((int) $rowIndex);
 
-            foreach ($quantityColumns as $quantityColumn) {
-                /** @var array{0: string, 1: string} $pair */
-                $pair = $resolvedColumns[$quantityColumn];
+            foreach ($classification['section_columns'] as $quantityColumn => $locationName) {
+                $qty = trim((string) ($compactRow[$quantityColumn] ?? ''));
+                if ($qty === '') {
+                    continue;
+                }
+
+                $sectionsSeen[$locationName] = true;
+                $birdsSeen[$defaultBirdName] = true;
+                $expandedRows->push(
+                    $this->buildCanonicalRowValues(
+                        $requiredColumns,
+                        $this->buildNormalizedCompactRow(
+                            $compactRow,
+                            $client,
+                            $locationName,
+                            $quantityColumn,
+                            $entryColumn,
+                            $defaultBirdName,
+                        ),
+                    ),
+                );
+                $rowGroups[] = $sourceRowGroup;
+            }
+
+            foreach ($classification['composite_columns'] as $quantityColumn => $pair) {
                 [$birdName, $locationName] = $pair;
 
                 $qty = trim((string) ($compactRow[$quantityColumn] ?? ''));
@@ -494,6 +536,217 @@ final class NormalizeCompactVisitPayloadAction
             array_keys($sectionsSeen),
             array_keys($birdsSeen),
         );
+    }
+
+    /**
+     * @param  array<int, string>  $quantityColumns
+     * @param  array<string, string>  $birdByToken
+     * @param  array<string, string>  $locationByToken
+     */
+    private function isHybridMultiSectorMultiBirdFormat(
+        array $quantityColumns,
+        array $birdByToken,
+        array $locationByToken,
+        bool $provision = false,
+    ): bool {
+        if ($provision && $locationByToken === []) {
+            $classification = $this->classifyHybridMultiSectorColumnsForProvisioning(
+                $quantityColumns,
+                $birdByToken,
+            );
+
+            if ($classification['composite_columns'] !== []) {
+                return true;
+            }
+
+            return $classification['bird_only_columns'] !== []
+                && $classification['section_columns'] !== [];
+        }
+
+        $classification = $this->classifyHybridMultiSectorColumns(
+            $quantityColumns,
+            $birdByToken,
+            $locationByToken,
+            strict: false,
+        );
+
+        if ($classification['composite_columns'] !== []) {
+            if (count($locationByToken) > 1) {
+                return true;
+            }
+
+            return $classification['section_columns'] === []
+                && $classification['bird_only_columns'] === [];
+        }
+
+        return count($locationByToken) > 1
+            && $classification['bird_only_columns'] !== []
+            && $classification['section_columns'] !== [];
+    }
+
+    /**
+     * @param  array<int, string>  $quantityColumns
+     * @param  array<string, string>  $birdByToken
+     * @param  array<string, string>  $locationByToken
+     * @return array{
+     *     bird_only_columns: list<string>,
+     *     section_columns: array<string, string>,
+     *     composite_columns: array<string, array{0: string, 1: string}>
+     * }
+     */
+    private function classifyHybridMultiSectorColumns(
+        array $quantityColumns,
+        array $birdByToken,
+        array $locationByToken,
+        bool $strict = true,
+    ): array {
+        $birdOnlyColumns = [];
+        $sectionColumns = [];
+        $compositeColumns = [];
+        $phase = 'birds';
+
+        foreach ($quantityColumns as $column) {
+            $token = $this->normalizeLocationToken($column);
+
+            if ($phase === 'birds') {
+                if ($this->isPureBirdColumn($column, $token, $birdByToken, $locationByToken)) {
+                    $birdOnlyColumns[] = $column;
+
+                    continue;
+                }
+
+                $phase = 'sections';
+            }
+
+            if ($phase === 'sections') {
+                $locationName = $locationByToken[$token] ?? null;
+
+                if (is_string($locationName)) {
+                    $sectionColumns[$column] = $locationName;
+
+                    continue;
+                }
+
+                $phase = 'composites';
+            }
+
+            $pair = $this->resolveCompositeColumn($column, $birdByToken, $locationByToken);
+
+            if ($pair !== null) {
+                $compositeColumns[$column] = $pair;
+
+                continue;
+            }
+
+            if ($strict) {
+                throw ValidationException::withMessages([
+                    'file' => [
+                        'No se pudo interpretar la columna "'.$column.'" en el bloque de secciones (Palomas) o como tipo de ave + seccion.',
+                    ],
+                ]);
+            }
+        }
+
+        return [
+            'bird_only_columns' => $birdOnlyColumns,
+            'section_columns' => $sectionColumns,
+            'composite_columns' => $compositeColumns,
+        ];
+    }
+
+    /**
+     * @param  array<int, string>  $quantityColumns
+     * @param  array<string, string>  $birdByToken
+     * @return array{
+     *     bird_only_columns: list<string>,
+     *     section_columns: array<string, string>,
+     *     composite_columns: array<string, array{0: string, 1: string}>
+     * }
+     */
+    private function classifyHybridMultiSectorColumnsForProvisioning(
+        array $quantityColumns,
+        array $birdByToken,
+    ): array {
+        $birdOnlyColumns = [];
+        $sectionColumns = [];
+        $compositeColumns = [];
+        $phase = 'birds';
+
+        foreach ($quantityColumns as $column) {
+            $token = $this->normalizeLocationToken($column);
+
+            if ($phase === 'birds') {
+                if (
+                    array_key_exists($token, $birdByToken)
+                    && $this->resolveCompositeColumnForProvisioning($column, $birdByToken, sectionsPhaseOnly: true) === null
+                ) {
+                    $birdOnlyColumns[] = $column;
+
+                    continue;
+                }
+
+                $phase = 'sections';
+            }
+
+            if ($phase === 'sections') {
+                $composite = $this->resolveCompositeColumnForProvisioning($column, $birdByToken, sectionsPhaseOnly: true);
+
+                if ($composite === null) {
+                    $sectionColumns[$column] = trim($column);
+
+                    continue;
+                }
+
+                $phase = 'composites';
+            }
+
+            $pair = $this->resolveCompositeColumnForProvisioning($column, $birdByToken);
+
+            if ($pair !== null) {
+                $compositeColumns[$column] = $pair;
+            }
+        }
+
+        return [
+            'bird_only_columns' => $birdOnlyColumns,
+            'section_columns' => $sectionColumns,
+            'composite_columns' => $compositeColumns,
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $birdByToken
+     * @return array{0: string, 1: string}|null
+     */
+    private function resolveCompositeColumnForProvisioning(
+        string $column,
+        array $birdByToken,
+        bool $sectionsPhaseOnly = false,
+    ): ?array {
+        $match = $this->birdTypeResolver->matchCompositePrefix($column);
+
+        if ($match !== null) {
+            return [$match[0]->name, $match[1]];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, string>  $birdByToken
+     * @param  array<string, string>  $locationByToken
+     */
+    private function isPureBirdColumn(
+        string $column,
+        string $token,
+        array $birdByToken,
+        array $locationByToken,
+    ): bool {
+        if (! array_key_exists($token, $birdByToken)) {
+            return false;
+        }
+
+        return $this->resolveCompositeColumn($column, $birdByToken, $locationByToken) === null;
     }
 
     /**
@@ -538,12 +791,9 @@ final class NormalizeCompactVisitPayloadAction
      */
     private function birdTypeTokenToName(): array
     {
-        return BirdType::query()
-            ->where('active', true)
-            ->orderBy('name')
-            ->get(['name'])
-            ->mapWithKeys(fn (BirdType $birdType): array => [
-                $this->normalizeLocationToken($birdType->name) => (string) $birdType->name,
+        return collect($this->birdTypeResolver->importLabelMap())
+            ->mapWithKeys(fn (BirdType $birdType, string $token): array => [
+                $token => (string) $birdType->name,
             ])
             ->all();
     }
@@ -566,7 +816,7 @@ final class NormalizeCompactVisitPayloadAction
 
     private function defaultBirdTypeName(): string
     {
-        return self::DEFAULT_BIRD_TYPE_NAME;
+        return $this->birdTypeResolver->default()->name;
     }
 
     /**
@@ -644,9 +894,6 @@ final class NormalizeCompactVisitPayloadAction
 
     private function normalizeLocationToken(string $value): string
     {
-        return (string) Str::of($value)
-            ->ascii()
-            ->lower()
-            ->replaceMatches('/[^a-z0-9]+/', '');
+        return $this->tokenNormalizer->normalize($value);
     }
 }

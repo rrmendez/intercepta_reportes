@@ -1,9 +1,11 @@
 {{--
     Dos graficos de lineas (Chart.js) para informe PDF y vista previa.
-    Requiere: $report_line_charts (array con clave charts).
+    Requiere: $graficos_lineas_periodo (alias: $report_line_charts).
 --}}
 @php
-    $charts = $report_line_charts['charts'] ?? [];
+    $chartsData = $graficos_lineas_periodo ?? $report_line_charts ?? [];
+    $charts = $chartsData['charts'] ?? [];
+    $texto_graficos_sin_datos = $texto_graficos_sin_datos ?? 'Sin datos de visitas para graficar en este período.';
     $hasData = collect($charts)->contains(
         fn (array $chart): bool => ! empty($chart['datasets'] ?? []),
     );
@@ -13,51 +15,27 @@
     data-report-charts="1"
     aria-label="Graficos del periodo"
 >
-    <h2>Evolucion de cantidades</h2>
+    <h2>Evolución de cantidades</h2>
 
     @if (! $hasData)
-        <p class="muted">Sin datos de visitas para graficar en este periodo.</p>
+        <p class="muted">{{ $texto_graficos_sin_datos }}</p>
     @else
         @foreach ($charts as $chart)
-            <div class="report-line-charts__chart" style="margin-top: 16px;">
+            <div
+                class="report-line-charts__chart"
+                data-report-chart-canvas-wrap
+                data-chart-height="260"
+                style="margin-top: 16px; position: relative; width: 100%; height: 260px; min-height: 260px;"
+            >
                 <canvas
                     id="{{ $chart['id'] }}"
-                    width="700"
-                    height="280"
-                    style="display: block; width: 100%; max-width: 700px; height: auto;"
                     aria-label="{{ $chart['title'] ?? 'Grafico' }}"
                 ></canvas>
             </div>
         @endforeach
     @endif
 
-    <script type="application/json" id="report-charts-config">@json($report_line_charts)</script>
+    <script type="application/json" id="report-charts-config">@json($chartsData)</script>
 
-    {!! app(\App\Services\ReportChartScriptInjector::class)->inlineBundle() !!}
-
-    <script>
-        (function () {
-            window.__reportChartsReady = false;
-
-            if (typeof window.ReportPdfCharts === 'undefined') {
-                window.__reportChartsReady = true;
-
-                return;
-            }
-
-            var configElement = document.getElementById('report-charts-config');
-
-            if (!configElement) {
-                window.__reportChartsReady = true;
-
-                return;
-            }
-
-            try {
-                window.ReportPdfCharts.render(JSON.parse(configElement.textContent || '{}'));
-            } catch (error) {
-                window.__reportChartsReady = true;
-            }
-        })();
-    </script>
+    @include('pdf.partials.report-charts-init')
 </section>

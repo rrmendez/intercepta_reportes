@@ -128,10 +128,9 @@ class GenerateMonthlyReportPdfService
             'period_label' => $period['period_label'],
         ])->render();
 
-        $documentHtml = ReportPdfDocumentHtml::withDefaultHeader(
-            ReportPdfDocumentHtml::withoutEmbeddedFixedFooter($html),
-            view('pdf.partials.report-pdf-default-header')->render(),
-        );
+        $headerHtml = view('pdf.partials.report-pdf-default-header')->render();
+
+        $documentHtml = ReportPdfDocumentHtml::preparePrintDocument($html, $headerHtml);
 
         return $this->pdfConverter->convert($documentHtml, [
             'chrome_footer_html' => $chromeFooterHtml,

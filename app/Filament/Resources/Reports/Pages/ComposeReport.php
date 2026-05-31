@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Filament\Resources\Reports\Pages;
 
 use App\Filament\Resources\Reports\ReportResource;
+use App\Filament\Tables\VisitSpreadsheetTable;
 use App\Mail\ReportPdfEmail;
 use App\Models\Client;
 use App\Models\Report;
 use App\ReportStatus;
+use App\Services\ClientPdfTemplateService;
 use App\Services\GenerateMonthlyReportPdfService;
 use App\Services\ReportBladeStringRenderer;
+use App\Services\ReportHtmlPreview;
 use App\Services\ReportPdfTemplateDefaults;
 use App\Services\Reports\ReportBladeVariableReference;
 use App\Services\Reports\ReportPeriodData;
@@ -196,7 +199,8 @@ class ComposeReport extends Page
                                     ->schema([
                                         Placeholder::make('compose_html_preview')
                                             ->hiddenLabel()
-                                            ->content(fn (Get $get): HtmlString => $this->composeTemplatePreviewHtml($get)),
+                                            ->content(fn (Get $get): HtmlString => $this->composeTemplatePreviewHtml($get))
+                                            ->key(fn (): string => 'compose-preview-'.$this->reportPreviewRevision),
                                     ]),
                                 Tab::make('source')
                                     ->label('Codigo Blade')
@@ -212,7 +216,8 @@ class ComposeReport extends Page
                                     ->schema([
                                         Placeholder::make('compose_blade_variables')
                                             ->hiddenLabel()
-                                            ->content(fn (Get $get): Htmlable => $this->variablesTabContent($get)),
+                                            ->content(fn (Get $get): Htmlable => $this->variablesTabContent($get))
+                                            ->key(fn (): string => 'compose-variables-'.$this->reportPreviewRevision),
                                     ]),
                             ])
                             ->columnSpanFull(),
@@ -235,15 +240,25 @@ class ComposeReport extends Page
     #[On('compose-report-range-changed')]
     public function syncRangeFromVisitsTable(string $dateFrom, string $dateUntil): void
     {
-        $this->data['date_from'] = $dateFrom;
-        $this->data['date_until'] = $dateUntil;
+        $this->applyComposePeriod($dateFrom, $dateUntil);
     }
 
     #[On('compose-report-spreadsheet-filters-changed')]
     public function syncSpreadsheetFiltersFromVisitsTable(array $filters): void
     {
         $this->previewSpreadsheetFilters = $filters;
-        $this->reportPreviewRevision++;
+
+        $range = app(VisitSpreadsheetTable::class)->resolveSpreadsheetFilterDateRange(
+            (array) data_get($filters, 'spreadsheet', []),
+        );
+
+        if ($range === null) {
+            $this->reportPreviewRevision++;
+
+            return;
+        }
+
+        $this->applyComposePeriod($range['date_from'], $range['date_until']);
     }
 
     #[On('report-period-visits-changed')]
@@ -255,6 +270,14 @@ class ComposeReport extends Page
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('restoreBasicTemplate')
+                ->label('Restaurar plantilla basica')
+                ->icon(Heroicon::OutlinedArrowPath)
+                ->color('warning')
+                ->requiresConfirmation()
+                ->modalHeading('Restaurar plantilla basica')
+                ->modalDescription('Se reemplazara el contenido del editor con la plantilla basica inicial. Los cambios no guardados se perderan. La plantilla del cliente no se actualiza hasta que guardes o envies el reporte.')
+                ->action(fn () => $this->restoreBasicTemplate()),
             Action::make('visualizePdf')
                 ->label('Visualizar PDF')
                 ->icon(Heroicon::OutlinedEye)
@@ -281,6 +304,30 @@ class ComposeReport extends Page
         $url = $this->composePdfPreviewUrl();
 
         $this->js('window.open('.json_encode($url, JSON_THROW_ON_ERROR).', "_blank")');
+    }
+
+    public function restoreBasicTemplate(): void
+    {
+        $this->authorizeReportMutation();
+
+        $client = $this->getSelectedClient();
+
+        if ($client === null) {
+            return;
+        }
+
+        $this->form->fill([
+            ...$this->form->getState(),
+            'pdf_template' => ReportPdfTemplateDefaults::basicExpandedSourceForClient($client),
+        ]);
+
+        $this->reportPreviewRevision++;
+
+        Notification::make()
+            ->title('Plantilla basica restaurada en el editor')
+            ->body('Guarda o envia el reporte para aplicar los cambios a la plantilla del cliente.')
+            ->success()
+            ->send();
     }
 
     public function saveDraft(): void
@@ -361,7 +408,6 @@ class ComposeReport extends Page
         );
 
         $templateId = filled($state['template_id'] ?? null) ? (int) $state['template_id'] : null;
-        $template = app(GenerateMonthlyReportPdfService::class)->resolveTemplateForClient($client, $templateId);
 
         $period = $this->resolveComposePeriod(null, $state);
 
@@ -378,6 +424,10 @@ class ComposeReport extends Page
                 ->first();
 
         $editorPayload = $state['pdf_template'] ?? (is_array($existing?->data) ? ($existing->data[self::EDITOR_DATA_KEY] ?? null) : null);
+
+        $template = is_string($editorPayload) && $editorPayload !== ''
+            ? app(ClientPdfTemplateService::class)->saveActiveTemplate($client, $editorPayload)
+            : app(GenerateMonthlyReportPdfService::class)->resolveTemplateForClient($client, $templateId);
 
         $mergedData = array_merge(
             $period['snapshot'],
@@ -453,6 +503,20 @@ class ComposeReport extends Page
 
             return $report->fresh();
         });
+    }
+
+    private function applyComposePeriod(string $dateFrom, string $dateUntil): void
+    {
+        [$from, $until] = app(ReportPeriodData::class)->normalizeRange($dateFrom, $dateUntil);
+
+        $fromString = $from->toDateString();
+        $untilString = $until->toDateString();
+
+        $this->date_from = $fromString;
+        $this->date_until = $untilString;
+        $this->data['date_from'] = $fromString;
+        $this->data['date_until'] = $untilString;
+        $this->reportPreviewRevision++;
     }
 
     private function composePdfPreviewUrl(): string
@@ -555,68 +619,14 @@ class ComposeReport extends Page
             );
         }
 
-        $safeHtml = $renderer->htmlForAdminPreview((string) $result['html']);
-
-        return new HtmlString(
-            '<style>
-                .report-html-preview .page-break,
-                .report-html-preview .report-cover--page-break,
-                .report-html-preview .report-initial-situation-page,
-                .report-html-preview .report-objective-methodology-page,
-                .report-html-preview .report-pdf-blank-page {
-                    position: relative;
-                    margin-bottom: 3.25rem !important;
-                }
-
-                .report-html-preview .page-break::after,
-                .report-html-preview .report-cover--page-break::after,
-                .report-html-preview .report-initial-situation-page::after,
-                .report-html-preview .report-objective-methodology-page::after,
-                .report-html-preview .report-pdf-blank-page::after {
-                    content: "Salto de pagina";
-                    position: absolute;
-                    right: 0;
-                    bottom: -2rem;
-                    left: 0;
-                    display: flex;
-                    align-items: center;
-                    gap: 0.75rem;
-                    color: rgb(107 114 128);
-                    font-size: 0.75rem;
-                    font-weight: 600;
-                    letter-spacing: 0.08em;
-                    text-transform: uppercase;
-                    white-space: nowrap;
-                }
-
-                .report-html-preview .page-break::after {
-                    position: static;
-                    margin-top: 2rem;
-                }
-
-                .report-html-preview .page-break::after,
-                .report-html-preview .report-cover--page-break::after,
-                .report-html-preview .report-initial-situation-page::after,
-                .report-html-preview .report-objective-methodology-page::after,
-                .report-html-preview .report-pdf-blank-page::after {
-                    background: linear-gradient(
-                        to bottom,
-                        transparent calc(50% - 0.5px),
-                        rgb(209 213 219) calc(50% - 0.5px),
-                        rgb(209 213 219) calc(50% + 0.5px),
-                        transparent calc(50% + 0.5px)
-                    );
-                    justify-content: center;
-                }
-
-                .report-html-preview .page-break::after {
-                    content: "Salto de pagina";
-                }
-            </style>
-            <div x-ignore data-report-preview-revision="'.$this->reportPreviewRevision.'" class="report-html-preview max-h-[70vh] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-gray-950 shadow-sm dark:border-gray-700">'
-            .$safeHtml
-            .'</div>',
+        $safeHtml = app(ReportHtmlPreview::class)->build(
+            (string) $result['html'],
+            $client,
+            $report,
+            (string) $period['period_label'],
         );
+
+        return app(ReportHtmlPreview::class)->wrap($safeHtml, $this->reportPreviewRevision);
     }
 
     private function variablesTabContent(Get $get): Htmlable
@@ -644,7 +654,7 @@ class ComposeReport extends Page
         $period = $this->resolveComposePeriod($report, $formSlice);
         $bladeData = app(ReportBladeStringRenderer::class)->bladeData($client, $report, $period);
 
-        $note = '$visits es un array de filas (misma forma que la tabla de vista previa) con las visitas filtradas por cliente, modo de periodo y fechas.';
+        $note = '$visitas es un array de filas (misma forma que la tabla de vista previa) con las visitas filtradas por cliente, modo de período y fechas. Todas las variables están en español; consulte la columna Resumen para entender cada una.';
 
         return app(ReportBladeVariableReference::class)->toHtml($bladeData, $note);
     }

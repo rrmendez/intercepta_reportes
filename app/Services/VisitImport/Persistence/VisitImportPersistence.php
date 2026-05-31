@@ -8,6 +8,7 @@ use App\Models\Employee;
 use App\Models\Location;
 use App\Models\Visit;
 use App\Models\VisitReport;
+use App\Services\BirdTypes\BirdTypeResolver;
 use App\Services\VisitImport\VisitImportPayload;
 use App\VisitStatus;
 use Carbon\CarbonImmutable;
@@ -19,6 +20,10 @@ use Throwable;
 class VisitImportPersistence
 {
     private const int MAX_PREVIEW_ERRORS = 100;
+
+    public function __construct(
+        private readonly BirdTypeResolver $birdTypeResolver,
+    ) {}
 
     /**
      * @return array{total_rows: int, valid_rows: int, invalid_rows: int, errors: array<int, string>}
@@ -103,10 +108,11 @@ class VisitImportPersistence
                 ['active' => true],
             );
 
-            $birdType = BirdType::query()->firstOrCreate(
-                ['name' => $data['bird_type_name']],
-                ['active' => true],
-            );
+            $birdType = $validationResult['bird_type'];
+
+            if (! $birdType instanceof BirdType) {
+                continue;
+            }
 
             $status = $this->resolveStatus($data['status']);
 
@@ -152,7 +158,7 @@ class VisitImportPersistence
 
     /**
      * @param  array<string, string>  $data
-     * @return array{is_valid: bool, errors: array<int, string>, date_init: ?CarbonImmutable, date_end: ?CarbonImmutable}
+     * @return array{is_valid: bool, errors: array<int, string>, date_init: ?CarbonImmutable, date_end: ?CarbonImmutable, bird_type: ?BirdType}
      */
     private function validateRow(array $data): array
     {
@@ -164,6 +170,24 @@ class VisitImportPersistence
                 'errors' => $validator->errors()->all(),
                 'date_init' => null,
                 'date_end' => null,
+                'bird_type' => null,
+            ];
+        }
+
+        $birdType = $this->birdTypeResolver->resolve($data['bird_type_name']);
+
+        if ($birdType === null) {
+            $suggestions = collect($this->birdTypeResolver->importLabelMap())
+                ->map(fn (BirdType $type): string => $type->name)
+                ->unique()
+                ->implode(', ');
+
+            return [
+                'is_valid' => false,
+                'errors' => ['Tipo de ave desconocido: "'.$data['bird_type_name'].'". Tipos registrados: '.$suggestions.'.'],
+                'date_init' => null,
+                'date_end' => null,
+                'bird_type' => null,
             ];
         }
 
@@ -175,6 +199,7 @@ class VisitImportPersistence
                 'errors' => ['Formato de fecha de inicio invalido.'],
                 'date_init' => null,
                 'date_end' => null,
+                'bird_type' => null,
             ];
         }
 
@@ -183,6 +208,7 @@ class VisitImportPersistence
             'errors' => [],
             'date_init' => $dateInit,
             'date_end' => $this->toDateTime($data['date_end']),
+            'bird_type' => $birdType,
         ];
     }
 
@@ -220,6 +246,10 @@ class VisitImportPersistence
             ])
             ->all();
 
+        if (array_key_exists('quantity', $mapped)) {
+            $mapped['quantity'] = $this->normalizeWholeNumberQuantity($mapped['quantity']);
+        }
+
         return array_merge([
             'client_name' => '',
             'employee_name' => '',
@@ -254,6 +284,23 @@ class VisitImportPersistence
             ['name' => $data['employee_name']],
             ['active' => true],
         );
+    }
+
+    private function normalizeWholeNumberQuantity(string $value): string
+    {
+        $trimmed = trim($value);
+
+        if ($trimmed === '' || ! is_numeric($trimmed)) {
+            return $trimmed;
+        }
+
+        $numeric = (float) $trimmed;
+
+        if ($numeric !== floor($numeric)) {
+            return $trimmed;
+        }
+
+        return (string) (int) $numeric;
     }
 
     private function resolveStatus(string $status): VisitStatus

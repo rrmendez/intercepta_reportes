@@ -9,6 +9,9 @@ use App\Models\Report;
 use App\Models\Visit;
 use App\Models\VisitReport;
 use App\Services\Reports\ReportChartSeriesBuilder;
+use App\Services\Reports\ReportCurrentSituationAndConclusionsBuilder;
+use App\Services\Reports\ReportPdfTemplateVariables;
+use App\Services\Reports\ReportServiceDetailsByLocationBuilder;
 use Carbon\CarbonImmutable;
 use DOMDocument;
 use Illuminate\Support\Collection;
@@ -19,6 +22,9 @@ final class ReportBladeStringRenderer
 {
     public function __construct(
         private readonly ReportChartSeriesBuilder $chartSeriesBuilder,
+        private readonly ReportServiceDetailsByLocationBuilder $serviceDetailsByLocationBuilder,
+        private readonly ReportCurrentSituationAndConclusionsBuilder $currentSituationAndConclusionsBuilder,
+        private readonly ReportPdfTemplateVariables $templateVariables,
     ) {}
 
     /**
@@ -41,6 +47,8 @@ final class ReportBladeStringRenderer
         if ($trimmed === '') {
             return $this->wrapBody('<p class="muted">Plantilla vacia.</p>');
         }
+
+        $trimmed = ReportPdfTemplateDefaults::expandPartialIncludes($trimmed);
 
         $data = $this->bladeData($client, $report, $period);
 
@@ -68,21 +76,59 @@ final class ReportBladeStringRenderer
     {
         /** @var Collection<int, VisitReport> $visitReports */
         $visitReports = $period['visit_reports'];
+        /** @var Collection<int, VisitReport> $historicalVisitReports */
+        $historicalVisitReports = $period['historical_visit_reports']
+            ?? $this->historicalVisitReportsForClient($client, $period['date_until']);
 
-        return array_merge(
-            $period['rich_content_data'],
-            [
-                'report' => $report,
-                'dateFrom' => $period['date_from'],
-                'dateUntil' => $period['date_until'],
-                'aggregations' => $period['aggregations'],
-                'report_line_charts' => $this->chartSeriesBuilder->build(
-                    $visitReports,
-                    $period['date_from'],
-                    $period['date_until'],
-                ),
-            ],
-        );
+        $datosCalculados = [
+            'registros_visita' => $visitReports,
+            'registros_visita_historicos' => $historicalVisitReports,
+            'graficos_lineas_periodo' => $this->chartSeriesBuilder->build(
+                $visitReports,
+                $period['date_from'],
+                $period['date_until'],
+            ),
+            'graficos_evolucion_fauna' => $this->chartSeriesBuilder->buildFaunaEvolutionCharts(
+                $visitReports,
+                $historicalVisitReports,
+            ),
+            'detalle_servicio_por_ubicacion' => $this->serviceDetailsByLocationBuilder->build(
+                $client,
+                $visitReports,
+            ),
+            'situacion_actual_y_conclusiones' => $this->currentSituationAndConclusionsBuilder->build(
+                $visitReports,
+                $historicalVisitReports,
+            ),
+            'tabla_poblacion_inicial_por_ave' => $this->currentSituationAndConclusionsBuilder->initialPopulationEntries(
+                $visitReports,
+                $historicalVisitReports,
+            ),
+        ];
+
+        return $this->templateVariables->construir($client, $report, $period, $datosCalculados);
+    }
+
+    /**
+     * @return Collection<int, VisitReport>
+     */
+    private function historicalVisitReportsForClient(Client $client, CarbonImmutable $dateUntil): Collection
+    {
+        $clientId = $client->getKey();
+
+        if (! is_int($clientId)) {
+            return collect();
+        }
+
+        return VisitReport::query()
+            ->whereHas(
+                'visit',
+                fn ($query) => $query
+                    ->where('client_id', $clientId)
+                    ->where('date_init', '<=', $dateUntil->endOfDay()),
+            )
+            ->with(['visit', 'birdType'])
+            ->get();
     }
 
     /**

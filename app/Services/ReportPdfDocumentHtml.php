@@ -28,6 +28,11 @@ final class ReportPdfDocumentHtml
         return is_string($injected) ? $injected : $html;
     }
 
+    public static function preparePrintDocument(string $html, string $headerHtml): string
+    {
+        return self::withDefaultHeader(self::withoutEmbeddedFixedFooter($html), $headerHtml);
+    }
+
     /**
      * Quita el pie incrustado (`report-pdf-fixed-footer`) cuando el PDF usa
      * `footerTemplate` de Chromium para evitar duplicar el pie.
@@ -60,7 +65,7 @@ final class ReportPdfDocumentHtml
         } else {
             foreach (iterator_to_array($dom->getElementsByTagName('style')) as $styleEl) {
                 $text = $styleEl->textContent ?? '';
-                if (str_contains($text, 'report-pdf-fixed-footer__bar')) {
+                if (self::isDedicatedFooterStylesheet($text)) {
                     $styleEl->parentNode?->removeChild($styleEl);
                 }
             }
@@ -76,5 +81,20 @@ final class ReportPdfDocumentHtml
         $saved = $dom->saveHTML($root);
 
         return is_string($saved) && $saved !== '' ? $saved : $html;
+    }
+
+    /**
+     * Plantillas unificadas incluyen reglas del pie en la misma hoja que el resto del informe;
+     * solo se eliminan bloques dedicados al pie incrustado.
+     */
+    private static function isDedicatedFooterStylesheet(string $css): bool
+    {
+        if (! str_contains($css, 'report-pdf-fixed-footer__bar')) {
+            return false;
+        }
+
+        return ! str_contains($css, 'report-page-title')
+            && ! str_contains($css, '.report-cover')
+            && ! str_contains($css, '@page');
     }
 }

@@ -51,7 +51,11 @@ final class PdfHtmlToBinaryConverter implements HtmlToPdfConverter
             ->waitUntilNetworkIdle();
 
         if (str_contains($html, 'data-report-charts')) {
-            $browsershot->waitForFunction('window.__reportChartsReady === true', null, 10_000);
+            $browsershot->waitForFunction(
+                'window.__reportChartsReady === true && (!Array.isArray(window.__reportChartInstances) || window.__reportChartInstances.every((chart) => chart.chartArea && chart.chartArea.height > 0))',
+                null,
+                15_000,
+            );
         }
 
         if ($hasChromeFooter) {

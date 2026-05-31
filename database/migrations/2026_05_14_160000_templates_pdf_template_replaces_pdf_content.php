@@ -16,7 +16,7 @@ return new class extends Migration
             $table->longText('pdf_template')->nullable()->after('content');
         });
 
-        $path = resource_path('pdf-report-templates/default.blade.txt');
+        $path = resource_path('pdf-report-templates/default.blade.php');
         $default = is_readable($path)
             ? (string) file_get_contents($path)
             : '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head><body><p>{{ $client->name }}</p></body></html>';

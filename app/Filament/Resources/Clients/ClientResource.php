@@ -4,6 +4,8 @@ namespace App\Filament\Resources\Clients;
 
 // use App\Filament\Resources\Clients\Pages\CreateClient;
 // use App\Filament\Resources\Clients\Pages\EditClient;
+use App\ClientImportMode;
+use App\Filament\Resources\Clients\Pages\EditBasePdfTemplate;
 use App\Filament\Resources\Clients\Pages\EditClientTemplate;
 use App\Filament\Resources\Clients\Pages\ListClients;
 use App\Filament\Resources\Clients\RelationManagers\SectionsRelationManager;
@@ -187,10 +189,6 @@ class ClientResource extends Resource
                             'date_until' => $until->toDateString(),
                         ]));
                     }),
-                Action::make('editPdfTemplate')
-                    ->label('Plantilla PDF')
-                    ->icon(Heroicon::OutlinedDocumentText)
-                    ->url(fn (Client $record): string => static::getUrl('template', ['record' => $record])),
                 DeleteAction::make()
                     ->label('Eliminar')
                     ->icon(Heroicon::OutlinedTrash),
@@ -217,7 +215,13 @@ class ClientResource extends Resource
         return [
             'index' => ListClients::route('/'),
             'template' => EditClientTemplate::route('/{record}/template'),
+            'base-template' => EditBasePdfTemplate::route('/base-template/{importMode}'),
         ];
+    }
+
+    public static function baseTemplateUrl(ClientImportMode $mode): string
+    {
+        return static::getUrl('base-template', ['importMode' => $mode->value]);
     }
 
     public static function reportModalRangeSessionKey(int|string $clientId): string

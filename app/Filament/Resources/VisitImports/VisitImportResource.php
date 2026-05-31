@@ -87,24 +87,24 @@ class VisitImportResource extends Resource
                     ->columns(2),
                 Section::make('Advertencias')
                     ->columnSpanFull()
-                    ->visible(fn (VisitImport $record): bool => $record->warnings !== null && $record->warnings !== [])
+                    ->visible(fn (VisitImport $record): bool => self::hasStringListEntries($record->warnings))
                     ->schema([
-                        TextEntry::make('warnings')
+                        TextEntry::make('warnings_display')
                             ->label('')
-                            ->formatStateUsing(fn (?array $state): string => $state === null || $state === []
-                                ? '-'
-                                : collect($state)->map(fn (string $line): string => '• '.$line)->implode("\n"))
+                            ->state(fn (VisitImport $record): string => self::formatStringListEntry(
+                                self::stringListEntries($record->warnings),
+                            ))
                             ->columnSpanFull(),
                     ]),
                 Section::make('Errores')
                     ->columnSpanFull()
-                    ->visible(fn (VisitImport $record): bool => $record->errors !== null && $record->errors !== [])
+                    ->visible(fn (VisitImport $record): bool => self::hasStringListEntries($record->errors))
                     ->schema([
-                        TextEntry::make('errors')
+                        TextEntry::make('errors_display')
                             ->label('')
-                            ->formatStateUsing(fn (?array $state): string => $state === null || $state === []
-                                ? '-'
-                                : collect($state)->map(fn (string $line): string => '• '.$line)->implode("\n"))
+                            ->state(fn (VisitImport $record): string => self::formatStringListEntry(
+                                self::stringListEntries($record->errors),
+                            ))
                             ->columnSpanFull(),
                     ]),
             ]);
@@ -167,6 +167,54 @@ class VisitImportResource extends Resource
     public static function canCreate(): bool
     {
         return false;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function stringListEntries(mixed $state): array
+    {
+        if (is_array($state)) {
+            /** @var array<int, string> $lines */
+            $lines = collect($state)
+                ->map(fn (mixed $line): string => trim((string) $line))
+                ->filter(fn (string $line): bool => $line !== '')
+                ->values()
+                ->all();
+
+            return $lines;
+        }
+
+        if (! is_string($state) || trim($state) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($state, true);
+
+        if (is_array($decoded)) {
+            return self::stringListEntries($decoded);
+        }
+
+        return [trim($state)];
+    }
+
+    private static function hasStringListEntries(mixed $state): bool
+    {
+        return self::stringListEntries($state) !== [];
+    }
+
+    /**
+     * @param  array<int, string>  $state
+     */
+    private static function formatStringListEntry(array $state): string
+    {
+        if ($state === []) {
+            return '-';
+        }
+
+        return collect($state)
+            ->map(fn (string $line): string => '• '.$line)
+            ->implode("\n");
     }
 
     public static function getModelLabel(): string

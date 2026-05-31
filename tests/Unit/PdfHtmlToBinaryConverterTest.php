@@ -18,5 +18,7 @@ it('configures chromium pdf generation to emulate print media', function (): voi
         ->and($src)->toContain('chrome_footer_html')
         ->and($src)->toContain('->margins($sideMarginMm, $sideMarginMm, $bottomMarginMm, $sideMarginMm, \'mm\')')
         ->and($src)->toContain("str_contains(\$html, 'data-report-charts')")
-        ->and($src)->toContain("->waitForFunction('window.__reportChartsReady === true', null, 10_000)");
+        ->and($src)->toContain('window.__reportChartsReady === true')
+        ->and($src)->toContain('chart.chartArea.height > 0')
+        ->and($src)->toContain('15_000');
 });

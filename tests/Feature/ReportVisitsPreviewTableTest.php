@@ -144,3 +144,26 @@ it('updates a quantity cell like the spreadsheet view', function (): void {
 
     expect((int) $visitReport->fresh()->quantity)->toBe(9);
 });
+
+it('dispatches compose report sync events when a nested spreadsheet filter changes', function (): void {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $client = Client::query()->create([
+        'name' => 'Cliente Filtros Compose',
+        'active' => true,
+        'import_mode' => ClientImportMode::MultiSectorSingleBird,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(ReportVisitsPreviewTable::class, [
+            'clientId' => $client->id,
+            'dateFrom' => '2026-05-01',
+            'dateUntil' => '2026-05-31',
+            'dispatchComposeRange' => true,
+            'dispatchComposeSpreadsheetFilters' => true,
+        ])
+        ->set('tableFilters.spreadsheet.mode', 'last_month')
+        ->assertDispatched('compose-report-range-changed')
+        ->assertDispatched('compose-report-spreadsheet-filters-changed');
+});

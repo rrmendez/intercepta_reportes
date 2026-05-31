@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire;
 
 use App\Filament\Resources\Clients\ClientResource;
+use App\Filament\Resources\Reports\Pages\ComposeReport;
 use App\Filament\Tables\VisitSpreadsheetTable;
 use App\Models\Visit;
 use Filament\Tables\Enums\FiltersLayout;
@@ -55,8 +56,17 @@ class ReportVisitsPreviewTable extends TableComponent
         return $result;
     }
 
-    public function updatedTableFilters(): void
+    public function updated(mixed $name): void
     {
+        if (is_string($name) && str_starts_with($name, 'tableFilters')) {
+            $this->syncReportModalRangeSession();
+        }
+    }
+
+    protected function handleTableFilterUpdates(): void
+    {
+        parent::handleTableFilterUpdates();
+
         $this->syncReportModalRangeSession();
     }
 
@@ -112,14 +122,14 @@ class ReportVisitsPreviewTable extends TableComponent
                 'compose-report-range-changed',
                 dateFrom: $range['date_from'],
                 dateUntil: $range['date_until'],
-            );
+            )->component(ComposeReport::class);
         }
 
         if ($this->dispatchComposeSpreadsheetFilters) {
             $this->dispatch(
                 'compose-report-spreadsheet-filters-changed',
-                filters: $this->tableFilters,
-            );
+                filters: $this->tableFilters ?? [],
+            )->component(ComposeReport::class);
         }
     }
 }

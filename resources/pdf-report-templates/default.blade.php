@@ -23,9 +23,9 @@
 
     @include('pdf.partials.report-objective-methodology-page')
 
-    @include('pdf.partials.report-pdf-blank-pages')
-
     @include('pdf.partials.report-line-charts')
+
+    @include('pdf.partials.report-contact-page')
 
     @include('pdf.partials.report-pdf-fixed-footer', [
         'client' => $client,

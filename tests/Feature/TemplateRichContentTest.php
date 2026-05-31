@@ -14,12 +14,17 @@ use App\Models\VisitReport;
 use App\Services\ReportBladeStringRenderer;
 use App\Services\ReportPdfTemplateDefaults;
 use App\Services\TemplateRichContent;
+use Database\Seeders\BirdTypeSeeder;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function (): void {
+    $this->seed(BirdTypeSeeder::class);
+});
 
 it('aggregates visit reports by bird type and location', function (): void {
     [$client, $visitReports, $visits] = createClientVisitReportFixture();
@@ -62,8 +67,8 @@ it('creates and saves the active client pdf blade template from the Filament pag
 
 it('ships default blade sources per import mode on disk', function (): void {
     foreach (ClientImportMode::cases() as $mode) {
-        $path = resource_path("pdf-report-templates/{$mode->value}.blade.txt");
-        expect(is_readable($path))->toBeTrue("Missing {$mode->value}.blade.txt");
+        $path = resource_path("pdf-report-templates/{$mode->value}.blade.php");
+        expect(is_readable($path))->toBeTrue("Missing {$mode->value}.blade.php");
     }
 });
 
@@ -174,10 +179,7 @@ function createClientVisitReportFixture(): array
         'active' => true,
     ]);
 
-    $birdType = BirdType::query()->create([
-        'name' => 'Palomas',
-        'active' => true,
-    ]);
+    $birdType = BirdType::query()->where('slug', 'palomas')->firstOrFail();
 
     $visit = Visit::query()->create([
         'client_id' => $client->id,
