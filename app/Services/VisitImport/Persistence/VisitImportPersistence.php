@@ -26,18 +26,21 @@ class VisitImportPersistence
     ) {}
 
     /**
-     * @return array{total_rows: int, valid_rows: int, invalid_rows: int, errors: array<int, string>}
+     * @return array{total_rows: int, valid_rows: int, invalid_rows: int, errors: array<int, string>, warnings: array<int, string>}
      */
     public function preview(VisitImportPayload $payload): array
     {
         $totalRows = $payload->totalSourceRows();
         $errors = [];
+        $warnings = [];
         $groupHasInvalid = [];
 
         foreach ($payload->rows as $index => $row) {
             $sourceRowIndex = $payload->rowGroupAt((int) $index);
             $rowNumber = $sourceRowIndex + 2;
-            $data = $this->mapRow($payload->headers, $row);
+            $preparedRow = $this->prepareRowForValidation($payload->headers, $row, $rowNumber);
+            $data = $preparedRow['data'];
+            $warnings = array_merge($warnings, $preparedRow['warnings']);
             $validationResult = $this->validateRow($data);
 
             if ($validationResult['is_valid']) {
@@ -70,6 +73,7 @@ class VisitImportPersistence
             'valid_rows' => $validRows,
             'invalid_rows' => $invalidRows,
             'errors' => $errors,
+            'warnings' => array_values($warnings),
         ];
     }
 
@@ -83,7 +87,9 @@ class VisitImportPersistence
 
         foreach ($payload->rows as $index => $row) {
             $sourceRowIndex = $payload->rowGroupAt((int) $index);
-            $data = $this->mapRow($payload->headers, $row);
+            $rowNumber = $sourceRowIndex + 2;
+            $preparedRow = $this->prepareRowForValidation($payload->headers, $row, $rowNumber);
+            $data = $preparedRow['data'];
             $validationResult = $this->validateRow($data);
 
             if (! $validationResult['is_valid']) {
@@ -160,6 +166,15 @@ class VisitImportPersistence
      * @param  array<string, string>  $data
      * @return array{is_valid: bool, errors: array<int, string>, date_init: ?CarbonImmutable, date_end: ?CarbonImmutable, bird_type: ?BirdType}
      */
+    public function validateRowData(array $data): array
+    {
+        return $this->validateRow($data);
+    }
+
+    /**
+     * @param  array<string, string>  $data
+     * @return array{is_valid: bool, errors: array<int, string>, date_init: ?CarbonImmutable, date_end: ?CarbonImmutable, bird_type: ?BirdType}
+     */
     private function validateRow(array $data): array
     {
         $validator = $this->makeRowValidator($data);
@@ -230,6 +245,28 @@ class VisitImportPersistence
             'observation' => ['nullable', 'string'],
             'visit_observation' => ['nullable', 'string'],
         ]);
+    }
+
+    /**
+     * @param  array<int, string>  $headers
+     * @param  array<int, string>  $row
+     * @return array{data: array<string, string>, warnings: array<int, string>}
+     */
+    private function prepareRowForValidation(array $headers, array $row, int $rowNumber): array
+    {
+        $data = $this->mapRow($headers, $row);
+        $warnings = [];
+        $quantity = $data['quantity'] ?? '';
+
+        if ($quantity !== '' && is_numeric($quantity) && (float) $quantity === floor((float) $quantity) && (int) $quantity < 0) {
+            $warnings[] = 'Fila '.$rowNumber.': la cantidad '.$quantity.' es negativa y se convertira a 0.';
+            $data['quantity'] = '0';
+        }
+
+        return [
+            'data' => $data,
+            'warnings' => $warnings,
+        ];
     }
 
     /**

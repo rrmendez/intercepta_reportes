@@ -41,7 +41,8 @@
 
         $contactPageHeightMm = 297
             - max(0, min(40, (int) config('services.report_pdf.margins_mm', 12)))
-            - max(18, min(55, (int) config('services.report_pdf.chrome_footer_slot_mm', 28)));
+            - max(18, min(55, (int) config('services.report_pdf.chrome_footer_slot_mm', 28)))
+            - max(0, min(20, (int) config('services.report_pdf.contact_page_height_trim_mm', 8)));
 
         $resolveCoverAssetUrl = static function (?string $url): ?string {
             if ($url !== null && $url !== '') {
@@ -445,8 +446,8 @@ html, body { margin: 0; background: #ffffff; }
         min-height: {{ $contactPageHeightMm }}mm;
         margin: 0;
         padding: 0;
-        page-break-before: always;
-        break-before: page;
+        page-break-after: avoid;
+        break-after: avoid;
         background: #ffffff;
         color: #374151;
         font-family: Arial, Helvetica, sans-serif;

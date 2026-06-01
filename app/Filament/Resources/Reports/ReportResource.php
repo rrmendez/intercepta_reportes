@@ -11,6 +11,7 @@ use App\Models\Template;
 use BackedEnum;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
+use Filament\Actions\DeleteAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -24,7 +25,6 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Storage;
 use UnitEnum;
 
 class ReportResource extends Resource
@@ -123,28 +123,22 @@ class ReportResource extends Resource
                     ->date('d/m/Y')
                     ->sortable(),
                 TextColumn::make('generated_at')
-                    ->label('PDF generado')
-                    ->dateTime('d/m/Y H:i')
+                    ->label('Reporte generado')
+                    ->state(fn (Report $record): ?string => Gate::allows('view', $record)
+                        ? 'Ver PDF'
+                        : null)
                     ->placeholder('-')
+                    ->url(fn (Report $record): ?string => Gate::allows('view', $record)
+                        ? static::viewPdfUrl($record)
+                        : null)
+                    ->openUrlInNewTab()
+                    ->color('primary')
                     ->sortable(),
                 TextColumn::make('email_sent_at')
                     ->label('Correo enviado')
                     ->dateTime('d/m/Y H:i')
                     ->placeholder('-')
                     ->sortable(),
-                TextColumn::make('pdf_download')
-                    ->label('Descarga')
-                    ->state(fn (Report $record): string => (filled($record->generated_file_path) && Storage::disk('local')->exists($record->generated_file_path))
-                        ? 'Descargar PDF'
-                        : '-')
-                    ->url(function (Report $record): ?string {
-                        if (! filled($record->generated_file_path) || ! Storage::disk('local')->exists($record->generated_file_path)) {
-                            return null;
-                        }
-
-                        return Filament::getPanel('admin')->route('reports.download-pdf', ['report' => $record]);
-                    })
-                    ->color('primary'),
             ])
             ->filters([
                 Filter::make('created_between')
@@ -196,16 +190,16 @@ class ReportResource extends Resource
                         'date_until' => $record->date_until?->toDateString() ?? now()->toDateString(),
                     ]))
                     ->visible(fn (Report $record): bool => Gate::allows('view', $record)),
-                Action::make('downloadPdf')
-                    ->label('Descargar PDF')
-                    ->icon(Heroicon::OutlinedDocumentArrowDown)
-                    ->visible(fn (Report $record): bool => filled($record->generated_file_path) && Storage::disk('local')->exists($record->generated_file_path))
-                    ->action(fn (Report $record) => Storage::disk('local')->download(
-                        $record->generated_file_path,
-                        $record->generated_filename,
-                    )),
+                DeleteAction::make()
+                    ->label('Eliminar')
+                    ->icon(Heroicon::OutlinedTrash),
             ])
             ->defaultSort('created_at', 'desc');
+    }
+
+    public static function viewPdfUrl(Report $report): string
+    {
+        return Filament::getPanel('admin')->route('reports.download-pdf', ['report' => $report]);
     }
 
     public static function getRelations(): array

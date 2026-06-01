@@ -237,9 +237,13 @@ final class NormalizeCompactVisitPayloadAction
         $singleLocationName = $this->resolveSingleActiveLocationName($client);
         $birdByToken = $this->birdTypeTokenToName();
 
-        foreach ($birdByToken as $token => $birdName) {
-            $hasColumn = collect($quantityColumns)
-                ->contains(fn (string $column): bool => $this->normalizeLocationToken($column) === $token);
+        $quantityColumnTokens = collect($quantityColumns)
+            ->map(fn (string $column): string => $this->normalizeLocationToken($column))
+            ->all();
+
+        foreach ($this->birdTypeTokensGroupedByName($birdByToken) as $birdName => $tokens) {
+            $hasColumn = collect($tokens)
+                ->contains(fn (string $token): bool => in_array($token, $quantityColumnTokens, true));
 
             if (! $hasColumn) {
                 $warnings[] = 'No hay columna para el tipo de ave "'.$birdName.'"; se importara solo la informacion presente en el archivo.';
@@ -796,6 +800,21 @@ final class NormalizeCompactVisitPayloadAction
                 $token => (string) $birdType->name,
             ])
             ->all();
+    }
+
+    /**
+     * @param  array<string, string>  $birdByToken
+     * @return array<string, list<string>>
+     */
+    private function birdTypeTokensGroupedByName(array $birdByToken): array
+    {
+        $grouped = [];
+
+        foreach ($birdByToken as $token => $birdName) {
+            $grouped[$birdName][] = $token;
+        }
+
+        return $grouped;
     }
 
     private function resolveSingleActiveLocationName(Client $client): string

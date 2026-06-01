@@ -7,6 +7,9 @@ use App\Filament\Resources\Clients\Pages\ListClients;
 use App\Models\Client;
 use App\Models\User;
 use App\Services\BasePdfTemplateService;
+use App\Services\DevPdfReportSample;
+use App\Services\ReportBladeStringRenderer;
+use App\Services\ReportHtmlPreview;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -62,6 +65,39 @@ it('resolves base template urls for each import mode', function (): void {
         expect(ClientResource::baseTemplateUrl($mode))
             ->toContain('/base-template/'.$mode->value);
     }
+});
+
+it('renders base template preview with the same html pipeline as compose', function (): void {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $mode = ClientImportMode::SingleSectorSingleBird;
+    $sample = DevPdfReportSample::build($mode);
+    $client = $sample['client'];
+    $report = $sample['report'];
+    $period = $sample['period'];
+
+    $source = app(BasePdfTemplateService::class)->readEditableSource($mode);
+    $result = app(ReportBladeStringRenderer::class)->tryRenderDocument($source, $client, $report, $period);
+
+    expect($result['ok'])->toBeTrue();
+
+    $previewHtml = app(ReportHtmlPreview::class)->build(
+        (string) $result['html'],
+        $client,
+        $report,
+        (string) $period['period_label'],
+    );
+
+    $wrapped = app(ReportHtmlPreview::class)->wrap($previewHtml)->toHtml();
+
+    expect($previewHtml)->toContain('report-pdf-preview-sheet')
+        ->and($previewHtml)->toContain('data-report-preview-scoped="1"')
+        ->and($wrapped)->toContain('class="report-html-preview');
+
+    Livewire::actingAs($user)
+        ->test(EditBasePdfTemplate::class, ['importMode' => $mode->value])
+        ->assertSeeHtml('class="report-html-preview');
 });
 
 it('loads editable base template source through the service', function (): void {

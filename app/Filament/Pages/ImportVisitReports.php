@@ -4,10 +4,10 @@ namespace App\Filament\Pages;
 
 use App\Filament\Resources\VisitImports\VisitImportResource;
 use App\Filament\Resources\Visits\VisitResource;
-use App\Jobs\ProcessStoredVisitImportJob;
 use App\Models\User;
 use App\Rules\VisitImportStoredFileValid;
 use App\Services\VisitImport\Helpers\VisitImportFileHelper;
+use App\Services\VisitImport\VisitImportBatchService;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
@@ -270,77 +270,14 @@ class ImportVisitReports extends Page
      */
     private function importFromPreview(array $preview, array $importContext = []): array
     {
-        $startedAt = microtime(true);
-
-        $entriesToImport = collect($preview)
-            ->filter(fn (array $entry): bool => (bool) ($entry['can_import'] ?? false))
-            ->filter(fn (array $entry): bool => isset($entry['file_path']) && is_string($entry['file_path']) && $entry['file_path'] !== '')
-            ->values();
-
-        if ($entriesToImport->isEmpty()) {
-            return [
-                'success' => false,
-                'queued' => false,
-                'message' => 'No hay archivos validos para importar. Corrige los archivos e intenta nuevamente.',
-                'imported_files' => 0,
-                'expected_files' => 0,
-                'total_rows' => 0,
-                'persisted_rows' => 0,
-                'skipped_rows' => 0,
-                'duration_seconds' => round(microtime(true) - $startedAt, 1),
-                'file_errors' => [],
-                'import_warnings' => [],
-            ];
-        }
-
         $userId = auth()->id();
-        $provision = (bool) ($importContext['provision_client_and_sections'] ?? false);
-        $replace = (bool) ($importContext['replace_previous_import_same_filename'] ?? false);
 
-        $dispatched = 0;
-        foreach ($entriesToImport as $entry) {
-            $filePath = (string) $entry['file_path'];
-            $originalName = (string) ($entry['file_name'] ?? basename($filePath));
-
-            ProcessStoredVisitImportJob::dispatch(
-                $filePath,
-                is_int($userId) ? $userId : null,
-                $originalName,
-                $provision,
-                $replace,
-                null,
-            );
-            $dispatched++;
-        }
-
-        $expected = $entriesToImport->count();
-        $previewRowTotal = (int) $entriesToImport->sum(fn (array $e): int => (int) ($e['total_rows'] ?? 0));
-
-        if ($dispatched === 1) {
-            $body = 'Tu archivo se recibió y lo estamos procesando. En unos minutos podrás ver el resultado en Importaciones de visitas.';
-        } else {
-            $body = 'Se recibieron '.$dispatched.' archivos y los estamos procesando. En unos minutos podrás ver los resultados en Importaciones de visitas.';
-        }
-
-        if ($previewRowTotal > 0) {
-            $body .= $dispatched === 1
-                ? ' Al revisar el archivo vimos '.$previewRowTotal.' filas con datos para importar.'
-                : ' Al revisar los archivos vimos '.$previewRowTotal.' filas con datos para importar en total.';
-        }
-
-        return [
-            'success' => true,
-            'queued' => true,
-            'message' => $body,
-            'imported_files' => $dispatched,
-            'expected_files' => $expected,
-            'total_rows' => $previewRowTotal,
-            'persisted_rows' => 0,
-            'skipped_rows' => 0,
-            'duration_seconds' => round(microtime(true) - $startedAt, 1),
-            'file_errors' => [],
-            'import_warnings' => [],
-        ];
+        return app(VisitImportBatchService::class)->dispatchBatch(
+            $preview,
+            $importContext,
+            is_int($userId) ? $userId : null,
+            false,
+        );
     }
 
     /**

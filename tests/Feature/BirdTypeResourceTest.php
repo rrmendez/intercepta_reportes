@@ -64,6 +64,9 @@ it('lists bird types and creates and edits records in modals', function (): void
             'common_name' => 'Gaviota marina',
             'common_name_plural' => 'Gaviotas marinas',
             'scientific_name' => 'Descripcion actualizada',
+            'aliases' => [
+                ['alias' => 'Gaviota'],
+            ],
             'active' => false,
         ])
         ->assertNotified();
@@ -73,5 +76,8 @@ it('lists bird types and creates and edits records in modals', function (): void
     expect($birdType->name)->toBe('Gaviotas marinas')
         ->and($birdType->common_name)->toBe('Gaviota marina')
         ->and($birdType->scientific_name)->toBe('Descripcion actualizada')
-        ->and($birdType->active)->toBeFalse();
+        ->and($birdType->active)->toBeFalse()
+        ->and($birdType->aliases)->toHaveCount(1)
+        ->and($birdType->aliases->first()->alias)->toBe('Gaviota')
+        ->and($birdType->aliases->first()->token)->toBe('gaviota');
 });

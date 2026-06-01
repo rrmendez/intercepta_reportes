@@ -15,7 +15,17 @@ it('renders the contact closing page with brand and contact details', function (
         ->and($html)->toContain('Cel.: 094 421 287')
         ->and($html)->toContain('Ext.: (+598) 94 421 287')
         ->and($html)->toContain('Intercepta Uruguay')
-        ->and($html)->toContain('page-break-before: always');
+        ->and($html)->toContain('page-break-after: avoid')
+        ->and($html)->not->toContain('page-break-before: always')
+        ->and($html)->toContain('min-height: 249mm');
+});
+
+it('avoids a duplicate page break between conclusions and contact in single sector single bird styles', function (): void {
+    $headStyles = file_get_contents(resource_path('views/pdf/partials/single-sector-single-bird-head.blade.php'));
+
+    expect($headStyles)->toMatch('/\.report-current-situation-and-conclusions-page[\s\S]*?page-break-after:\s*always/')
+        ->and($headStyles)->toMatch('/\.report-contact-page[\s\S]*?page-break-after:\s*avoid/')
+        ->and($headStyles)->not->toMatch('/\.report-contact-page[\s\S]*?page-break-before:\s*always/');
 });
 
 it('includes the contact page in the single sector single bird template', function (): void {

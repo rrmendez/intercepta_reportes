@@ -57,6 +57,8 @@ return [
         /** Alto reservado en el margen inferior del PDF para el pie nativo de Chromium (`footerTemplate`). */
         'chrome_footer_slot_mm' => max(18, min(55, (int) env('REPORT_PDF_CHROME_FOOTER_SLOT_MM', 28))),
         'chrome_footer_y_offset_mm' => max(-10, min(10, (int) env('REPORT_PDF_CHROME_FOOTER_Y_OFFSET_MM', 6))),
+        /** Evita una hoja en blanco final cuando la pagina de contacto llena el area imprimible con pie Chrome. */
+        'contact_page_height_trim_mm' => max(0, min(20, (int) env('REPORT_PDF_CONTACT_PAGE_HEIGHT_TRIM_MM', 8))),
     ],
 
 ];

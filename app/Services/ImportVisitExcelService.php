@@ -66,6 +66,7 @@ class ImportVisitExcelService
         return DB::transaction(function () use ($absolutePath, $fallbackClientId, $context): array {
             $prepared = $this->preparePayloadForImport($absolutePath, $fallbackClientId, $context);
             $preview = $this->persistence->preview($prepared['payload']);
+            $prepared['warnings'] = array_merge($prepared['warnings'], $preview['warnings'] ?? []);
 
             $replaceNotice = $this->maybeReplacePreviousImportVisits($context, $fallbackClientId, $prepared);
             if ($replaceNotice !== null) {
@@ -118,7 +119,7 @@ class ImportVisitExcelService
             $prepared = $this->preparePayloadForImport($absolutePath, $fallbackClientId, $context);
             $preview = $this->persistence->preview($prepared['payload']);
             $merged = array_merge($preview, [
-                'warnings' => $prepared['warnings'],
+                'warnings' => array_merge($prepared['warnings'], $preview['warnings'] ?? []),
             ]);
 
             if ($openedRollbackTransaction) {
@@ -523,6 +524,17 @@ class ImportVisitExcelService
         }
 
         return $this->resolveClientFromFileName($absolutePath, $provision);
+    }
+
+    public function resolveExistingClientFromFilePath(string $absolutePath): ?Client
+    {
+        $outcome = $this->evaluateClientResolutionOutcome($absolutePath);
+
+        if ($outcome['status'] === 'matched') {
+            return $outcome['client'];
+        }
+
+        return null;
     }
 
     /**

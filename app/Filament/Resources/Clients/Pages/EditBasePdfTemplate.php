@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\BasePdfTemplateService;
 use App\Services\DevPdfReportSample;
 use App\Services\ReportBladeStringRenderer;
+use App\Services\ReportHtmlPreview;
 use App\Services\ReportPdfTemplateDefaults;
 use App\Services\Reports\ReportBladeVariableReference;
 use Filament\Actions\Action;
@@ -193,13 +194,14 @@ class EditBasePdfTemplate extends Page
             );
         }
 
-        $safeHtml = $renderer->htmlForAdminPreview((string) $result['html']);
-
-        return new HtmlString(
-            '<div x-ignore class="max-h-[70vh] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-gray-950 shadow-sm dark:border-gray-700">'
-            .$safeHtml
-            .'</div>',
+        $safeHtml = app(ReportHtmlPreview::class)->build(
+            (string) $result['html'],
+            $client,
+            $report,
+            (string) $period['period_label'],
         );
+
+        return app(ReportHtmlPreview::class)->wrap($safeHtml);
     }
 
     private function variablesTabContent(): Htmlable

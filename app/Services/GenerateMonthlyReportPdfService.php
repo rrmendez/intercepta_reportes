@@ -181,6 +181,39 @@ class GenerateMonthlyReportPdfService
         return sprintf('reports/%s.pdf', $limitedBaseFileName);
     }
 
+    public function renderReportPdfBinary(Report $report): string
+    {
+        $report->loadMissing('client');
+
+        $client = $report->client;
+
+        if ($client === null) {
+            throw new InvalidArgumentException('El reporte no tiene un cliente asociado.');
+        }
+
+        $template = $this->resolveTemplateForClient($client, $report->template_id);
+
+        [$from, $until] = $this->periodData->normalizeRange(
+            (string) $report->date_from,
+            (string) $report->date_until,
+        );
+
+        $period = $this->periodData->load($client, $from, $until, $report);
+
+        $editorTemplate = is_array($report->data) ? ($report->data['editor_pdf_template'] ?? null) : null;
+        $pdfTemplate = is_string($editorTemplate) && $editorTemplate !== ''
+            ? $editorTemplate
+            : $template?->pdf_template;
+
+        return $this->renderPdfBinary(
+            client: $client,
+            report: $report,
+            template: $template,
+            period: $period,
+            pdfTemplate: $pdfTemplate,
+        );
+    }
+
     private function monthNameInSpanish(int $month): string
     {
         return match ($month) {

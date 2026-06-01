@@ -7,6 +7,7 @@ use App\Models\Report;
 use App\Models\User;
 use App\ReportStatus;
 use Database\Seeders\RoleSeeder;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -56,19 +57,105 @@ it('lists reports with compose link, author column, email sent column, and filte
         ->assertTableColumnExists('date_until')
         ->assertTableColumnExists('generated_at')
         ->assertTableColumnExists('email_sent_at')
-        ->assertTableColumnExists('pdf_download')
+        ->assertSee('Ver PDF')
         ->assertTableFilterExists('created_between')
         ->assertTableFilterExists('period_date_from')
         ->assertTableActionExists('compose')
-        ->assertTableActionExists('downloadPdf')
-        ->assertTableActionVisible('downloadPdf', $report);
+        ->assertTableActionExists('delete')
+        ->assertTableActionVisible('compose', $report)
+        ->assertTableActionVisible('delete', $report);
 
     expect(ReportResource::canCreate())->toBeTrue()
         ->and(ReportResource::getNavigationGroup())->toBe('General')
         ->and(ReportResource::canGloballySearch())->toBeFalse();
 });
 
-it('serves the report pdf download route for authorized users', function (): void {
+it('shows view action for draft reports without a stored pdf file', function (): void {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $client = Client::query()->create([
+        'name' => 'Cliente Borrador',
+        'active' => true,
+    ]);
+
+    $report = Report::query()->create([
+        'client_id' => $client->id,
+        'generated_by_user_id' => $user->id,
+        'month' => 4,
+        'year' => 2026,
+        'date_from' => '2026-04-01',
+        'date_until' => '2026-04-30',
+        'status' => ReportStatus::Draft,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(ListReports::class)
+        ->assertSee('Ver PDF');
+});
+
+it('allows admins to delete a report from the listing and removes its stored pdf', function (): void {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $client = Client::query()->create([
+        'name' => 'Cliente Eliminar',
+        'active' => true,
+    ]);
+
+    Storage::disk('local')->put('reports/cliente-eliminar.pdf', 'PDF');
+
+    $report = Report::query()->create([
+        'client_id' => $client->id,
+        'generated_by_user_id' => $user->id,
+        'month' => 5,
+        'year' => 2026,
+        'date_from' => '2026-05-01',
+        'date_until' => '2026-05-31',
+        'generated_file_path' => 'reports/cliente-eliminar.pdf',
+        'status' => ReportStatus::Generated,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(ListReports::class)
+        ->callAction(TestAction::make('delete')->table($report))
+        ->assertNotified();
+
+    expect(Report::query()->whereKey($report->id)->exists())->toBeFalse()
+        ->and(Storage::disk('local')->exists('reports/cliente-eliminar.pdf'))->toBeFalse();
+});
+
+it('hides delete action from operators in the report listing', function (): void {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $user->assignRole('Operator');
+
+    $client = Client::query()->create([
+        'name' => 'Cliente Operador',
+        'active' => true,
+    ]);
+
+    $report = Report::query()->create([
+        'client_id' => $client->id,
+        'generated_by_user_id' => $user->id,
+        'month' => 5,
+        'year' => 2026,
+        'date_from' => '2026-05-01',
+        'date_until' => '2026-05-31',
+        'status' => ReportStatus::Draft,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(ListReports::class)
+        ->assertTableActionHidden('delete', $report);
+});
+
+it('serves the report pdf inline for authorized users', function (): void {
     Storage::fake('local');
 
     $user = User::factory()->create();
@@ -96,5 +183,35 @@ it('serves the report pdf download route for authorized users', function (): voi
 
     $this->actingAs($user)
         ->get($url)
-        ->assertOk();
+        ->assertOk()
+        ->assertHeader('Content-Type', 'application/pdf');
+});
+
+it('renders draft report pdfs on demand when no stored file exists', function (): void {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $client = Client::query()->create([
+        'name' => 'Cliente Borrador PDF',
+        'active' => true,
+    ]);
+
+    $report = Report::query()->create([
+        'client_id' => $client->id,
+        'generated_by_user_id' => $user->id,
+        'month' => 4,
+        'year' => 2026,
+        'date_from' => '2026-04-01',
+        'date_until' => '2026-04-30',
+        'status' => ReportStatus::Draft,
+    ]);
+
+    $url = Filament::getPanel('admin')->route('reports.download-pdf', ['report' => $report]);
+
+    $this->actingAs($user)
+        ->get($url)
+        ->assertOk()
+        ->assertHeader('Content-Type', 'application/pdf');
 });

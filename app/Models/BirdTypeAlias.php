@@ -22,7 +22,7 @@ class BirdTypeAlias extends Model
     protected static function booted(): void
     {
         static::saving(function (BirdTypeAlias $alias): void {
-            if ($alias->token === '' && filled($alias->alias)) {
+            if (blank($alias->token) && filled($alias->alias)) {
                 $alias->token = app(BirdTypeTokenNormalizer::class)
                     ->normalize($alias->alias);
             }

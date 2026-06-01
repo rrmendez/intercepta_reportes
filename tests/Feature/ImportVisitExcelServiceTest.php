@@ -872,6 +872,37 @@ it('imports compact csv with bird columns for single sector multi bird mode', fu
     }
 });
 
+it('warns once per missing bird type column in compact single sector multi bird', function () {
+    $client = Client::query()->create([
+        'name' => 'Cliente Aves Parcial',
+        'active' => true,
+    ]);
+
+    Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Unica',
+        'active' => true,
+    ]);
+
+    $csvPath = createTempCsv(implode("\n", [
+        'Fecha,Entrada,Salida,Tordos,Observaciones,Nombre de usuario',
+        '2026-04-10,08:00,09:30,2,Sin novedades,Marta',
+    ]));
+
+    try {
+        $preview = app(ImportVisitExcelService::class)->preview($csvPath, $client->id);
+
+        $missingBirdWarnings = collect($preview['warnings'])
+            ->filter(fn (string $warning): bool => str_contains($warning, 'No hay columna para el tipo de ave'));
+
+        expect($missingBirdWarnings)->toHaveCount(2)
+            ->and($missingBirdWarnings->filter(fn (string $warning): bool => str_contains($warning, '"Palomas"')))->toHaveCount(1)
+            ->and($missingBirdWarnings->filter(fn (string $warning): bool => str_contains($warning, '"Cotorras"')))->toHaveCount(1);
+    } finally {
+        @unlink($csvPath);
+    }
+});
+
 it('warns and skips unknown bird type columns in compact single sector multi bird', function () {
     $client = Client::query()->create([
         'name' => 'Cliente Aves Mix',
@@ -1278,6 +1309,54 @@ it('surfaces preview errors for invalid integer quantities', function () {
 
         expect($preview['invalid_rows'])->toBe(1)
             ->and($preview['errors'])->not->toBeEmpty();
+    } finally {
+        @unlink($csvPath);
+    }
+});
+
+it('converts negative quantities to zero with a warning instead of rejecting the row', function () {
+    $client = Client::query()->create([
+        'name' => 'Cliente Negativos',
+        'active' => true,
+    ]);
+
+    foreach (['Jumbos', 'Conversiones'] as $name) {
+        Location::query()->create([
+            'client_id' => $client->id,
+            'name' => $name,
+            'active' => true,
+        ]);
+    }
+
+    $csvPath = createTempCsv(implode("\n", [
+        'Fecha,Entrada,Salida,Jumbos,Conversiones,Observaciones,Nombre de usuario',
+        '2026-04-10,08:00,09:30,-1,2,Local errado,Marta',
+    ]));
+
+    try {
+        $preview = app(ImportVisitExcelService::class)->preview($csvPath, $client->id);
+
+        expect($preview['valid_rows'])->toBe(1)
+            ->and($preview['invalid_rows'])->toBe(0)
+            ->and($preview['errors'])->toBeEmpty()
+            ->and($preview['warnings'])->toContain('Fila 2: la cantidad -1 es negativa y se convertira a 0.');
+
+        $result = app(ImportVisitExcelService::class)->import($csvPath, $client->id);
+
+        expect($result['persisted_rows'])->toBe(1)
+            ->and($result['warnings'])->toContain('Fila 2: la cantidad -1 es negativa y se convertira a 0.');
+
+        $visitReports = Visit::query()
+            ->with('visitReports')
+            ->firstOrFail()
+            ->visitReports
+            ->sortBy('quantity')
+            ->values();
+
+        expect($visitReports)->toHaveCount(2)
+            ->and($visitReports[0]->quantity)->toBe(0)
+            ->and($visitReports[0]->observation)->toBe('Local errado')
+            ->and($visitReports[1]->quantity)->toBe(2);
     } finally {
         @unlink($csvPath);
     }
