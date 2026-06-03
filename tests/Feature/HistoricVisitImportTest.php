@@ -1,5 +1,6 @@
 <?php
 
+use App\ClientImportMode;
 use App\Jobs\ProcessHistoricVisitImportsJob;
 use App\Models\BirdType;
 use App\Models\Client;
@@ -45,6 +46,7 @@ it('maps spreadsheet columns to client sections ordered by creation', function (
     $client = Client::query()->create([
         'name' => 'Conaprole',
         'active' => true,
+        'import_mode' => ClientImportMode::MultiSectorSingleBird,
     ]);
 
     Location::query()->create([
@@ -79,6 +81,7 @@ it('dry run previews historic visits with fake metadata', function () {
     $client = Client::query()->create([
         'name' => 'Conaprole',
         'active' => true,
+        'import_mode' => ClientImportMode::MultiSectorSingleBird,
     ]);
 
     Location::query()->create([
@@ -288,6 +291,78 @@ it('dispatches the historic import job with dry run by default', function () {
         return $job->dryRun === true
             && $job->directory === base_path('historico');
     });
+});
+
+it('maps spreadsheet bird columns for single sector multi bird clients', function () {
+    $client = Client::query()->create([
+        'name' => 'Alur',
+        'active' => true,
+        'import_mode' => ClientImportMode::SingleSectorMultiBird,
+    ]);
+
+    Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Alur',
+        'active' => true,
+    ]);
+
+    $directory = createTempHistoricDirectory([
+        'Alur.xls' => [
+            ['Fecha', 'Paloma', 'Cotorra'],
+            [45264, 8, 20],
+            [45265, 7, 15],
+        ],
+    ]);
+
+    try {
+        $summary = app(HistoricVisitImportService::class)->processDirectory($directory, dryRun: true);
+
+        expect($summary['successful_files'])->toBe(1)
+            ->and($summary['total_visit_reports'])->toBe(4)
+            ->and($summary['files'][0]['column_mappings'])->toHaveCount(2)
+            ->and(collect($summary['files'][0]['column_mappings'])->pluck('bird_type_name')->all())
+            ->toContain('Palomas', 'Cotorras');
+    } finally {
+        deleteDirectoryRecursive($directory);
+    }
+});
+
+it('maps composite bird and section headers for multi sector multi bird clients', function () {
+    $client = Client::query()->create([
+        'name' => 'Monte Paz',
+        'active' => true,
+        'import_mode' => ClientImportMode::MultiSectorMultiBird,
+    ]);
+
+    Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Interior',
+        'active' => true,
+    ]);
+
+    Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Exterior',
+        'active' => true,
+    ]);
+
+    $directory = createTempHistoricDirectory([
+        'Monte Paz.xls' => [
+            ['fecha', 'Palomas interior', 'Palomas exterior'],
+            [40827, 65, 33],
+        ],
+    ]);
+
+    try {
+        $summary = app(HistoricVisitImportService::class)->processDirectory($directory, dryRun: true);
+
+        expect($summary['successful_files'])->toBe(1)
+            ->and($summary['total_visit_reports'])->toBe(2)
+            ->and(collect($summary['files'][0]['column_mappings'])->pluck('location_name')->all())
+            ->toBe(['Interior', 'Exterior']);
+    } finally {
+        deleteDirectoryRecursive($directory);
+    }
 });
 
 it('extracts client names from prefixed historic filenames', function () {

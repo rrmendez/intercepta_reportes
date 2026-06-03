@@ -5,7 +5,6 @@ namespace App\Services\HistoricVisitImport;
 use App\Models\Client;
 use App\Models\Visit;
 use App\Models\VisitImport;
-use App\Services\BirdTypes\BirdTypeResolver;
 use App\Services\VisitImport\Validation\VisitImportStructureValidator;
 use App\Services\VisitImport\VisitImportPayload;
 use Illuminate\Support\Collection;
@@ -31,7 +30,7 @@ final class HistoricVisitImportService
     public function __construct(
         private readonly HistoricVisitSpreadsheetReader $reader,
         private readonly HistoricVisitImportPersistence $persistence,
-        private readonly BirdTypeResolver $birdTypeResolver,
+        private readonly HistoricVisitColumnResolver $columnResolver,
     ) {}
 
     /**
@@ -130,13 +129,16 @@ final class HistoricVisitImportService
             $clientDisplayName = $this->extractClientDisplayNameFromFilename($filename);
             $client = $this->resolveExistingClientOrFail($clientDisplayName);
             $spreadsheetData = $this->reader->read($absolutePath);
-            $sectionNames = $this->resolveSectionNames($client, $spreadsheetData['section_column_indices']);
+            $columnMappings = $this->columnResolver->resolve(
+                $client,
+                $spreadsheetData['section_column_indices'],
+                $spreadsheetData['column_headers'],
+            );
             $existingVisitDates = $this->existingVisitDatesForClient($client);
             $buildResult = $this->buildPayload(
                 $client->name,
                 $spreadsheetData['rows'],
-                $spreadsheetData['section_column_indices'],
-                $sectionNames,
+                $columnMappings,
                 $existingVisitDates,
             );
 
@@ -150,7 +152,8 @@ final class HistoricVisitImportService
                     'client_name' => $client->name,
                     'client_resolution' => 'existing_client',
                     'matched_client_name' => $client->name,
-                    'sections' => $sectionNames,
+                    'sections' => collect($columnMappings)->pluck('location_name')->unique()->values()->all(),
+                    'column_mappings' => $columnMappings,
                     'total_rows' => $preview['total_rows'],
                     'valid_rows' => $preview['valid_rows'],
                     'invalid_rows' => $preview['invalid_rows'],
@@ -163,7 +166,7 @@ final class HistoricVisitImportService
                 ];
             }
 
-            return DB::transaction(function () use ($filename, $client, $payload, $preview, $sectionNames, $buildResult, $userId): array {
+            return DB::transaction(function () use ($filename, $client, $payload, $preview, $columnMappings, $buildResult, $userId): array {
                 $visitImport = VisitImport::query()->create([
                     'client_id' => $client->id,
                     'user_id' => $userId,
@@ -202,7 +205,8 @@ final class HistoricVisitImportService
                     'client_name' => $client->name,
                     'client_resolution' => 'existing_client',
                     'matched_client_name' => $client->name,
-                    'sections' => $sectionNames,
+                    'sections' => collect($columnMappings)->pluck('location_name')->unique()->values()->all(),
+                    'column_mappings' => $columnMappings,
                     'total_rows' => $persistResult['total_rows'],
                     'valid_rows' => $preview['valid_rows'],
                     'invalid_rows' => $preview['invalid_rows'],
@@ -268,20 +272,17 @@ final class HistoricVisitImportService
     }
 
     /**
-     * @param  array<int, int>  $sectionColumnIndices
-     * @param  array<int, string>  $sectionNames
+     * @param  list<array{column_index: int, location_name: string, bird_type_name: string, header: ?string}>  $columnMappings
      * @param  array<string, true>  $existingVisitDates
      * @return array{payload: VisitImportPayload, skipped_existing_dates: int}
      */
     private function buildPayload(
         string $clientName,
         Collection $rows,
-        array $sectionColumnIndices,
-        array $sectionNames,
+        array $columnMappings,
         array $existingVisitDates,
     ): array {
         $requiredColumns = VisitImportStructureValidator::requiredColumns();
-        $birdTypeName = $this->birdTypeResolver->default()->name;
         $expandedRows = collect();
         $rowGroups = [];
         $sourceRowIndex = 0;
@@ -303,14 +304,10 @@ final class HistoricVisitImportService
             $dateEnd = $this->reader->excelSerialToDateString($dateSerial, self::FAKE_TIME_END);
             $currentSourceRowIndex = $sourceRowIndex;
 
-            foreach ($sectionColumnIndices as $position => $columnIndex) {
+            foreach ($columnMappings as $mapping) {
+                $columnIndex = $mapping['column_index'];
+
                 if (! array_key_exists($columnIndex, $row['quantities'])) {
-                    continue;
-                }
-
-                $sectionName = $sectionNames[$position] ?? null;
-
-                if (! is_string($sectionName)) {
                     continue;
                 }
 
@@ -323,8 +320,8 @@ final class HistoricVisitImportService
                             'date_init' => $dateInit,
                             'date_end' => $dateEnd,
                             'status' => 'completed',
-                            'location_name' => $sectionName,
-                            'bird_type_name' => $birdTypeName,
+                            'location_name' => $mapping['location_name'],
+                            'bird_type_name' => $mapping['bird_type_name'],
                             'quantity' => (string) $row['quantities'][$columnIndex],
                             'observation' => self::HISTORIC_OBSERVATION,
                             'visit_observation' => self::HISTORIC_OBSERVATION,
@@ -342,36 +339,6 @@ final class HistoricVisitImportService
             'payload' => new VisitImportPayload($requiredColumns, $expandedRows->values(), $rowGroups),
             'skipped_existing_dates' => $skippedExistingDates,
         ];
-    }
-
-    /**
-     * @param  array<int, int>  $sectionColumnIndices
-     * @return array<int, string>
-     */
-    private function resolveSectionNames(Client $client, array $sectionColumnIndices): array
-    {
-        $sections = $client->locations()
-            ->where('active', true)
-            ->orderBy('id')
-            ->pluck('name')
-            ->values()
-            ->all();
-
-        if ($sections === []) {
-            throw new RuntimeException(
-                'El cliente "'.$client->name.'" no tiene secciones activas configuradas.',
-            );
-        }
-
-        $requiredCount = count($sectionColumnIndices);
-
-        if (count($sections) < $requiredCount) {
-            throw new RuntimeException(
-                'El archivo tiene '.$requiredCount.' columnas de cantidad pero el cliente "'.$client->name.'" solo tiene '.count($sections).' seccion(es) activa(s).',
-            );
-        }
-
-        return array_slice($sections, 0, $requiredCount);
     }
 
     /**
@@ -397,7 +364,7 @@ final class HistoricVisitImportService
 
         /** @var Collection<int, Client> $matches */
         $matches = Client::query()
-            ->get(['id', 'name'])
+            ->get(['id', 'name', 'import_mode'])
             ->filter(fn (Client $client): bool => $this->normalizeHeaderToken($client->name) === $token)
             ->values();
 

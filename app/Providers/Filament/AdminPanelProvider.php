@@ -36,7 +36,7 @@ class AdminPanelProvider extends PanelProvider
             ->sidebarCollapsibleOnDesktop()
             ->brandLogo(asset('images/intercepta-logo.svg'))
             ->brandLogoHeight('2.75rem')
-            ->favicon(asset('favicon.ico'))
+            ->favicon(asset('images/favicon.ico'))
             ->colors([
                 'primary' => 'rgb(232, 177, 76)',
             ])

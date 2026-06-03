@@ -84,7 +84,30 @@ class ClientResource extends Resource
                         Repeater::make('locations')
                             ->hiddenLabel()
                             ->relationship()
-                            ->deletable(fn (?array $state): bool => count($state ?? []) > 1)
+                            ->deletable(function (Repeater $component): bool {
+                                $client = $component->getRecord();
+                                if ($client instanceof Client) {
+                                    return $client->namedLocations()->count() > 1;
+                                }
+
+                                return self::userManagedSectionCountInRepeater($component) > 1;
+                            })
+                            ->deleteAction(function (Action $action): Action {
+                                return $action->visible(function (array $arguments, Repeater $component): bool {
+                                    if (! $component->isDeletable()) {
+                                        return false;
+                                    }
+
+                                    $client = $component->getRecord();
+
+                                    if (! $client instanceof Client) {
+                                        return true;
+                                    }
+                                    $item = $component->getRawState()[$arguments['item']] ?? null;
+
+                                    return ! self::isInternalClientSection($item, $client);
+                                });
+                            })
                             ->simple(
                                 TextInput::make('name')
                                     ->label('Nombre')
@@ -118,6 +141,9 @@ class ClientResource extends Resource
                     ->sortable(),
                 TextColumn::make('email')
                     ->label('Correo')
+                    ->getStateUsing(fn (Client $record): string => filled($record->email) ? $record->email : 'Sin correo asignado')
+                    ->color(fn (Client $record): ?string => filled($record->email) ? null : 'gray')
+                    ->description(fn (Client $record): string => ($record->import_mode ?? ClientImportMode::SingleSectorSingleBird)->filamentLabel())
                     ->searchable()
                     ->toggleable(),
             ])
@@ -191,7 +217,14 @@ class ClientResource extends Resource
                     }),
                 DeleteAction::make()
                     ->label('Eliminar')
-                    ->icon(Heroicon::OutlinedTrash),
+                    ->icon(Heroicon::OutlinedTrash)
+                    ->modalDescription(fn (Client $record): string => 'Revisa el detalle de los datos que se eliminarán junto con este cliente.')
+                    ->modalContent(fn (Client $record): View => view('filament.resources.clients.delete-client-confirmation', [
+                        'client' => $record,
+                        'counts' => $record->deletionImpactCounts(),
+                    ]))
+                    ->modalSubmitActionLabel('Eliminar cliente')
+                    ->modalCancelActionLabel('Cancelar'),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
@@ -260,6 +293,37 @@ class ClientResource extends Resource
             'dateFrom' => (string) $range['date_from'],
             'dateUntil' => (string) $range['date_until'],
         ]);
+    }
+
+    public static function userManagedSectionCountInRepeater(Repeater $component): int
+    {
+        $client = $component->getRecord();
+
+        if (! $client instanceof Client) {
+            return $component->getItemsCount();
+        }
+
+        return collect($component->getRawState() ?? [])
+            ->filter(fn (mixed $item): bool => ! self::isInternalClientSection($item, $client))
+            ->count();
+    }
+
+    /**
+     * @param  array<string, mixed>|string|null  $item
+     */
+    public static function isInternalClientSection(mixed $item, Client $client): bool
+    {
+        if (is_string($item)) {
+            return $item === $client->name;
+        }
+
+        if (! is_array($item)) {
+            return false;
+        }
+
+        $name = $item['name'] ?? null;
+
+        return is_string($name) && $name === $client->name;
     }
 
     public static function getModelLabel(): string

@@ -87,4 +87,37 @@ class Client extends Model
     {
         return $this->hasMany(VisitImport::class);
     }
+
+    /**
+     * @return array{
+     *     locations: int,
+     *     templates: int,
+     *     sections: int,
+     *     reports: int,
+     *     report_pdfs: int,
+     *     visit_imports: int,
+     *     visits: int,
+     *     visit_reports: int
+     * }
+     */
+    public function deletionImpactCounts(): array
+    {
+        return [
+            'locations' => $this->locations()->count(),
+            'templates' => $this->templates()->count(),
+            'sections' => Section::query()
+                ->whereIn('template_id', $this->templates()->select('id'))
+                ->count(),
+            'reports' => $this->reports()->count(),
+            'report_pdfs' => $this->reports()->whereNotNull('generated_file_path')->count(),
+            'visit_imports' => $this->visitImports()->count(),
+            'visits' => $this->visits()->count(),
+            'visit_reports' => VisitReport::query()
+                ->where(function ($query): void {
+                    $query->whereHas('visit', fn ($visitQuery) => $visitQuery->whereBelongsTo($this))
+                        ->orWhereHas('location', fn ($locationQuery) => $locationQuery->whereBelongsTo($this));
+                })
+                ->count(),
+        ];
+    }
 }

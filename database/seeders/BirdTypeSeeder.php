@@ -44,6 +44,14 @@ class BirdTypeSeeder extends Seeder
             'scientific_name' => 'Molothrus bonariensis',
             'aliases' => ['Tordo'],
         ],
+        [
+            'slug' => 'gorriones',
+            'name' => 'Gorriones',
+            'common_name' => 'Gorrion',
+            'common_name_plural' => 'Gorriones',
+            'scientific_name' => 'Passer domesticus',
+            'aliases' => ['Gorrion', 'Garrion', 'garrion'],
+        ],
     ];
 
     public function run(): void

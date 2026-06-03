@@ -4,7 +4,11 @@ use App\ClientImportMode;
 use App\Filament\Resources\Clients\ClientResource;
 use App\Filament\Resources\Clients\Pages\EditBasePdfTemplate;
 use App\Filament\Resources\Clients\Pages\ListClients;
+use App\Filament\Resources\Clients\Widgets\ClientsStatsOverviewWidget;
 use App\Models\Client;
+use App\Models\Location;
+use App\Models\Report;
+use App\Models\Template;
 use App\Models\User;
 use App\Services\BasePdfTemplateService;
 use App\Services\DevPdfReportSample;
@@ -18,6 +22,46 @@ uses(RefreshDatabase::class);
 
 beforeEach(function (): void {
     $this->seed(RoleSeeder::class);
+});
+
+it('shows missing email placeholder and import mode in the email column', function (): void {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $importModeLabel = ClientImportMode::MultiSectorMultiBird->filamentLabel();
+
+    Client::query()->create([
+        'name' => 'Cliente Sin Correo',
+        'email' => null,
+        'import_mode' => ClientImportMode::MultiSectorMultiBird,
+        'active' => true,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(ListClients::class)
+        ->assertSee('Sin correo asignado')
+        ->assertSeeHtml('fi-ta-text-description')
+        ->assertSeeHtml(e($importModeLabel));
+});
+
+it('shows import mode below the client email when an address is set', function (): void {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $importModeLabel = ClientImportMode::MultiSectorSingleBird->filamentLabel();
+
+    $client = Client::query()->create([
+        'name' => 'Cliente Tipo Import',
+        'email' => 'contacto@ejemplo.test',
+        'import_mode' => ClientImportMode::MultiSectorSingleBird,
+        'active' => true,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(ListClients::class)
+        ->assertSee($client->email)
+        ->assertSeeHtml('fi-ta-text-description')
+        ->assertSeeHtml(e($importModeLabel));
 });
 
 it('lists base pdf template header actions and removes the per-row pdf template action', function (): void {
@@ -100,10 +144,64 @@ it('renders base template preview with the same html pipeline as compose', funct
         ->assertSeeHtml('class="report-html-preview');
 });
 
+it('shows deletion impact summary in the delete client modal', function (): void {
+    $client = Client::query()->create([
+        'name' => 'Cliente Con Datos',
+        'active' => true,
+    ]);
+
+    Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Deposito',
+        'active' => true,
+    ]);
+
+    Template::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Plantilla mensual',
+        'active' => true,
+    ]);
+
+    Report::query()->create([
+        'client_id' => $client->id,
+        'month' => 5,
+        'year' => 2026,
+    ]);
+
+    $counts = $client->deletionImpactCounts();
+
+    expect($counts['locations'])->toBe(1)
+        ->and($counts['templates'])->toBe(1)
+        ->and($counts['reports'])->toBe(1);
+
+    $html = view('filament.resources.clients.delete-client-confirmation', [
+        'client' => $client,
+        'counts' => $counts,
+    ])->render();
+
+    expect($html)
+        ->toContain('Cliente Con Datos')
+        ->toContain('sección del cliente')
+        ->toContain('plantilla PDF personalizada')
+        ->toContain('reporte mensual')
+        ->toContain('Esta acción no se puede deshacer');
+});
+
 it('loads editable base template source through the service', function (): void {
     $mode = ClientImportMode::SingleSectorSingleBird;
     $source = app(BasePdfTemplateService::class)->readEditableSource($mode);
 
     expect($source)->not->toBeEmpty()
         ->and($source)->toContain('<!DOCTYPE html>');
+});
+
+it('shows client listing metrics widgets for admins', function (): void {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    Livewire::actingAs($user)
+        ->test(ClientsStatsOverviewWidget::class)
+        ->assertSee('Visitas promedio por cliente')
+        ->assertSee('Reportes enviados')
+        ->assertSee('Reportes enviados (mes anterior)');
 });

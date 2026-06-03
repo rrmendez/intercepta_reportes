@@ -66,11 +66,13 @@ class SectionsRelationManager extends RelationManager
             ])
             ->recordActions([
                 EditAction::make(),
-                DeleteAction::make(),
+                DeleteAction::make()
+                    ->visible(fn (): bool => $this->getOwnerRecord()->namedLocations()->count() > 1),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    DeleteBulkAction::make()
+                        ->visible(fn (): bool => $this->getOwnerRecord()->namedLocations()->count() > 1),
                 ]),
             ])
             ->defaultSort('name');

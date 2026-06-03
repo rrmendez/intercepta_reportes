@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Clients\Pages;
 use App\ClientImportMode;
 use App\Filament\Pages\ImportVisitReports;
 use App\Filament\Resources\Clients\ClientResource;
+use App\Filament\Resources\Clients\Widgets\ClientsStatsOverviewWidget;
 use App\Models\Client;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -15,6 +16,18 @@ use Filament\Support\Icons\Heroicon;
 class ListClients extends ListRecords
 {
     protected static string $resource = ClientResource::class;
+
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            ClientsStatsOverviewWidget::class,
+        ];
+    }
+
+    public function getHeaderWidgetsColumns(): int|array
+    {
+        return 3;
+    }
 
     protected function getHeaderActions(): array
     {
