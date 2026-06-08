@@ -9,22 +9,20 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('reports', function (Blueprint $table): void {
+            $table->dropForeign(['client_id']);
             $table->dropUnique(['client_id', 'date_from', 'date_until']);
-        });
-
-        Schema::table('reports', function (Blueprint $table): void {
             $table->index(['client_id', 'date_from', 'date_until']);
+            $table->foreign('client_id')->references('id')->on('clients')->cascadeOnDelete();
         });
     }
 
     public function down(): void
     {
         Schema::table('reports', function (Blueprint $table): void {
+            $table->dropForeign(['client_id']);
             $table->dropIndex(['client_id', 'date_from', 'date_until']);
-        });
-
-        Schema::table('reports', function (Blueprint $table): void {
             $table->unique(['client_id', 'date_from', 'date_until']);
+            $table->foreign('client_id')->references('id')->on('clients')->cascadeOnDelete();
         });
     }
 };

@@ -3,6 +3,10 @@
 .env
 .env.backup
 .env.production
+*.ppk
+*.pem
+id_rsa
+id_ed25519
 .phpactor.json
 .phpunit.result.cache
 /.fleet
