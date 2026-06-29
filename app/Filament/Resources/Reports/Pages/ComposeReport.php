@@ -15,6 +15,7 @@ use App\Services\GenerateMonthlyReportPdfService;
 use App\Services\ReportBladeStringRenderer;
 use App\Services\ReportHtmlPreview;
 use App\Services\ReportPdfTemplateDefaults;
+use App\Services\Reports\InlineTemplateTextEditor;
 use App\Services\Reports\ReportBladeVariableReference;
 use App\Services\Reports\ReportPeriodData;
 use Carbon\CarbonImmutable;
@@ -24,6 +25,7 @@ use Filament\Forms\Components\CodeEditor;
 use Filament\Forms\Components\CodeEditor\Enums\Language;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Filament\Schemas\Components\EmbeddedSchema;
@@ -265,6 +267,87 @@ class ComposeReport extends Page
     public function refreshReportPreviewAfterVisitChange(): void
     {
         $this->reportPreviewRevision++;
+    }
+
+    #[On('compose-edit-inline')]
+    public function openInlineEditor(string $originalText, string $before = '', string $after = ''): void
+    {
+        $this->mountAction('editInlineText', [
+            'originalText' => $originalText,
+            'before' => $before,
+            'after' => $after,
+        ]);
+    }
+
+    public function editInlineTextAction(): Action
+    {
+        return Action::make('editInlineText')
+            ->modalHeading('Editar texto')
+            ->modalDescription('Edita el texto seleccionado. Se aplicara a la plantilla del editor; guarda o envia el reporte para conservar los cambios.')
+            ->fillForm(fn (array $arguments): array => [
+                'newText' => $arguments['originalText'] ?? '',
+            ])
+            ->schema([
+                Textarea::make('newText')
+                    ->label('Texto')
+                    ->rows(6)
+                    ->autosize()
+                    ->required(),
+            ])
+            ->action(function (array $data, array $arguments): void {
+                $this->applyInlineTextEdit(
+                    (string) ($arguments['originalText'] ?? ''),
+                    (string) ($data['newText'] ?? ''),
+                    (string) ($arguments['before'] ?? ''),
+                    (string) ($arguments['after'] ?? ''),
+                );
+            });
+    }
+
+    private function applyInlineTextEdit(string $original, string $replacement, string $before, string $after): void
+    {
+        $this->authorizeReportMutation();
+
+        if ($original === $replacement) {
+            return;
+        }
+
+        $state = $this->form->getState();
+        $source = (string) ($state['pdf_template'] ?? '');
+
+        $result = app(InlineTemplateTextEditor::class)->replace($source, $original, $replacement, $before, $after);
+
+        if (! $result['ok']) {
+            Notification::make()
+                ->title('No se pudo editar el texto')
+                ->body($this->inlineEditFailureMessage((string) $result['reason']))
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        $this->form->fill([
+            ...$state,
+            'pdf_template' => $result['source'],
+        ]);
+
+        $this->reportPreviewRevision++;
+
+        Notification::make()
+            ->title('Texto actualizado en el editor')
+            ->success()
+            ->send();
+    }
+
+    private function inlineEditFailureMessage(string $reason): string
+    {
+        return match ($reason) {
+            'dynamic' => 'Ese valor proviene de los datos del reporte (visitas o calculos), no del texto de la plantilla. Modificalo en la tabla "Visitas del periodo" o en la pestana Codigo Blade.',
+            'ambiguous' => 'La seleccion aparece varias veces y no se pudo ubicar con certeza. Selecciona un fragmento mas largo.',
+            'too_short' => 'Selecciona un fragmento de texto mas largo para editarlo.',
+            default => 'No se pudo ubicar el texto seleccionado en la plantilla.',
+        };
     }
 
     protected function getHeaderActions(): array
