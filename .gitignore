@@ -9,6 +9,7 @@ id_rsa
 id_ed25519
 .phpactor.json
 .phpunit.result.cache
+/tests/tmp
 /.fleet
 /.idea
 /.nova

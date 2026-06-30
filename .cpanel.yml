@@ -1,0 +1,20 @@
+---
+deployment:
+  tasks:
+    # === Rutas y binarios ===
+    # Carpeta donde corre la app en vivo (document root del subdominio reportes.)
+    - export DEPLOYPATH=/home/uinteruy/public_html/reportes.interceptauruguay.com.uy
+    # PHP 8.3 de cPanel (ea-php83)
+    - export PHP=/opt/cpanel/ea-php83/root/usr/bin/php
+
+    # === 1. Copiar el codigo del repo hacia la carpeta en vivo ===
+    # Sin --delete y con exclusiones: NO toca vendor/, .env, storage/ ni public/build,
+    # que no estan en el repo y fueron subidos/generados a mano.
+    - /usr/bin/rsync -a --exclude='.git/' --exclude='.gitignore' --exclude='.cpanel.yml' --exclude='.env' --exclude='/storage/' --exclude='/vendor/' --exclude='/node_modules/' --exclude='/public/build/' --exclude='/public/storage/' ./ "$DEPLOYPATH/"
+
+    # === 2. Optimizaciones de Laravel (PHP 8.3) ===
+    # Si prefieres correr las migraciones a mano, elimina la linea de migrate.
+    - cd "$DEPLOYPATH" && "$PHP" artisan migrate --force
+    - cd "$DEPLOYPATH" && "$PHP" artisan optimize:clear
+    - cd "$DEPLOYPATH" && "$PHP" artisan config:cache
+    - cd "$DEPLOYPATH" && "$PHP" artisan view:cache
