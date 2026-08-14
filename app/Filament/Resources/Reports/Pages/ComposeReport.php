@@ -37,7 +37,6 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Contracts\Support\Htmlable;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
@@ -616,13 +615,15 @@ class ComposeReport extends Page
 
         $token = Str::lower(Str::random(40));
 
-        // Base64: el cache driver `database` guarda en una columna de texto UTF-8
-        // que rechaza bytes binarios del PDF (SQLSTATE 22007 / 1366).
-        Cache::put(
-            "compose_report_pdf_preview:{$userId}:{$token}",
-            base64_encode($binary),
-            now()->addMinutes(10),
-        );
+        $disk = Storage::disk('local');
+
+        foreach ($disk->files('pdf-previews') as $staleFile) {
+            if ($disk->lastModified($staleFile) < now()->subMinutes(10)->getTimestamp()) {
+                $disk->delete($staleFile);
+            }
+        }
+
+        $disk->put("pdf-previews/{$userId}-{$token}.pdf", $binary);
 
         $panel = Filament::getCurrentPanel() ?? Filament::getDefaultPanel();
 
