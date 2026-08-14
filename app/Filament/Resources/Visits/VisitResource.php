@@ -8,6 +8,7 @@ use App\Filament\Resources\Visits\Pages\ListVisitsSpreadsheet;
 use App\Models\BirdType;
 use App\Models\Location;
 use App\Models\Visit;
+use App\Services\VisitObservations\VisitObservationMetricsExtractor;
 use App\VisitStatus;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
@@ -83,6 +84,27 @@ class VisitResource extends Resource
                             ->label('Observacion')
                             ->rows(3)
                             ->columnSpanFull(),
+                        TextInput::make('nests_removed')
+                            ->label('Nidos retirados')
+                            ->numeric()
+                            ->integer()
+                            ->minValue(0)
+                            ->maxValue(VisitObservationMetricsExtractor::MAX_METRIC_VALUE)
+                            ->helperText('Se calcula automaticamente desde la observacion'),
+                        TextInput::make('captures_falconry')
+                            ->label('Capturas (cetreria)')
+                            ->numeric()
+                            ->integer()
+                            ->minValue(0)
+                            ->maxValue(VisitObservationMetricsExtractor::MAX_METRIC_VALUE)
+                            ->helperText('Se calcula automaticamente desde la observacion'),
+                        TextInput::make('captures_trap')
+                            ->label('Capturas (trampa)')
+                            ->numeric()
+                            ->integer()
+                            ->minValue(0)
+                            ->maxValue(VisitObservationMetricsExtractor::MAX_METRIC_VALUE)
+                            ->helperText('Se calcula automaticamente desde la observacion'),
                     ])
                     ->columns(2),
                 Section::make('Detalles de observacion')

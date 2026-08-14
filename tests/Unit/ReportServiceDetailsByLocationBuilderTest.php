@@ -187,6 +187,121 @@ it('counts captures and removed nests from visit observations', function (): voi
         ->and($section['nidos_retirados'])->toBe(2);
 });
 
+it('prefers persisted metrics and falls back to parsing for legacy visits', function (): void {
+    $client = Client::query()->create([
+        'name' => 'Cliente Demo',
+        'active' => true,
+        'import_mode' => ClientImportMode::SingleSectorSingleBird,
+    ]);
+
+    $location = Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Planta central',
+        'active' => true,
+    ]);
+
+    $birdType = BirdType::query()->where('slug', 'palomas')->firstOrFail();
+
+    $employee = Employee::query()->create([
+        'name' => 'Técnico',
+        'active' => true,
+    ]);
+
+    $overriddenVisit = Visit::query()->create([
+        'client_id' => $client->id,
+        'employee_id' => $employee->id,
+        'date_init' => '2026-03-24 17:00:00',
+        'date_end' => '2026-03-24 18:00:00',
+        'observation' => 'Se captura 1 paloma',
+    ]);
+    $overriddenVisit->captures_falconry = 5;
+    $overriddenVisit->nests_removed = 3;
+    $overriddenVisit->save();
+
+    $legacyVisit = Visit::query()->create([
+        'client_id' => $client->id,
+        'employee_id' => $employee->id,
+        'date_init' => '2026-03-25 16:00:00',
+        'date_end' => '2026-03-25 17:00:00',
+        'observation' => "Se recorre planta 4 en su totalidad\nSe capturan dos palomas",
+    ]);
+    Visit::query()->whereKey($legacyVisit->id)->update([
+        'nests_removed' => null,
+        'captures_falconry' => null,
+        'captures_trap' => null,
+    ]);
+
+    $visitReports = VisitReport::query()
+        ->whereIn('id', [
+            VisitReport::query()->create([
+                'visit_id' => $overriddenVisit->id,
+                'location_id' => $location->id,
+                'bird_type_id' => $birdType->id,
+                'quantity' => 2,
+            ])->id,
+            VisitReport::query()->create([
+                'visit_id' => $legacyVisit->id,
+                'location_id' => $location->id,
+                'bird_type_id' => $birdType->id,
+                'quantity' => 0,
+            ])->id,
+        ])
+        ->with(['visit', 'location', 'birdType'])
+        ->get();
+
+    $result = app(ReportServiceDetailsByLocationBuilder::class)->build($client, $visitReports);
+    $section = $result['sections'][0];
+
+    expect($section['capturas'])->toBe(7)
+        ->and($section['nidos_retirados'])->toBe(3);
+});
+
+it('falls back to the visit report observation when the visit has no observation text', function (): void {
+    $client = Client::query()->create([
+        'name' => 'Cliente Demo',
+        'active' => true,
+        'import_mode' => ClientImportMode::SingleSectorSingleBird,
+    ]);
+
+    $location = Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Planta central',
+        'active' => true,
+    ]);
+
+    $birdType = BirdType::query()->where('slug', 'palomas')->firstOrFail();
+
+    $employee = Employee::query()->create([
+        'name' => 'Técnico',
+        'active' => true,
+    ]);
+
+    $visit = Visit::query()->create([
+        'client_id' => $client->id,
+        'employee_id' => $employee->id,
+        'date_init' => '2026-03-24 17:00:00',
+        'date_end' => '2026-03-24 18:00:00',
+        'observation' => null,
+    ]);
+
+    expect($visit->captures_falconry)->toBe(0);
+
+    $visitReports = VisitReport::query()
+        ->whereKey(VisitReport::query()->create([
+            'visit_id' => $visit->id,
+            'location_id' => $location->id,
+            'bird_type_id' => $birdType->id,
+            'quantity' => 1,
+            'observation' => 'Se captura 1 paloma',
+        ])->id)
+        ->with(['visit', 'location', 'birdType'])
+        ->get();
+
+    $result = app(ReportServiceDetailsByLocationBuilder::class)->build($client, $visitReports);
+
+    expect($result['sections'][0]['capturas'])->toBe(1);
+});
+
 /**
  * @return Collection<int, VisitReport>
  */

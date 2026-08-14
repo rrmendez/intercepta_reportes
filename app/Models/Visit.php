@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\VisitObservations\VisitObservationMetricsExtractor;
 use App\VisitStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Visit extends Model
 {
+    public const OBSERVATION_METRIC_FIELDS = ['nests_removed', 'captures_falconry', 'captures_trap'];
+
     protected $fillable = [
         'client_id',
         'visit_import_id',
@@ -16,6 +19,9 @@ class Visit extends Model
         'date_init',
         'date_end',
         'observation',
+        'nests_removed',
+        'captures_falconry',
+        'captures_trap',
         'status',
     ];
 
@@ -27,8 +33,35 @@ class Visit extends Model
         return [
             'date_init' => 'datetime',
             'date_end' => 'datetime',
+            'nests_removed' => 'integer',
+            'captures_falconry' => 'integer',
+            'captures_trap' => 'integer',
             'status' => VisitStatus::class,
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (Visit $visit): void {
+            if ($visit->exists) {
+                if (! $visit->isDirty('observation') || $visit->isDirty(self::OBSERVATION_METRIC_FIELDS)) {
+                    return;
+                }
+            } else {
+                $hasManualMetrics = collect(self::OBSERVATION_METRIC_FIELDS)
+                    ->contains(fn (string $field): bool => $visit->{$field} !== null);
+
+                if ($hasManualMetrics) {
+                    return;
+                }
+            }
+
+            $metrics = app(VisitObservationMetricsExtractor::class)->extract($visit->observation);
+
+            $visit->nests_removed = $metrics->nestsRemoved;
+            $visit->captures_falconry = $metrics->capturesFalconry;
+            $visit->captures_trap = $metrics->capturesTrap;
+        });
     }
 
     public function client(): BelongsTo

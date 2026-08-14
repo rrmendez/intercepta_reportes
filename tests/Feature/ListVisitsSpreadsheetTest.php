@@ -97,6 +97,68 @@ it('lists visits for client and month and updates a quantity cell', function ():
         ->and((int) $visitReport->quantity)->toBe(12);
 });
 
+it('updates observation metric cells and recalculates them when the observation cell changes', function (): void {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $client = Client::query()->create([
+        'name' => 'Cliente Metricas',
+        'active' => true,
+        'import_mode' => ClientImportMode::MultiSectorSingleBird,
+    ]);
+
+    Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Deposito',
+        'active' => true,
+    ]);
+
+    $employee = Employee::query()->create([
+        'name' => 'Operario Hoja',
+        'active' => true,
+    ]);
+
+    $visit = Visit::query()->create([
+        'client_id' => $client->id,
+        'employee_id' => $employee->id,
+        'date_init' => '2026-05-10 08:00:00',
+        'date_end' => null,
+        'observation' => 'Se captura una paloma',
+        'status' => VisitStatus::Completed,
+    ]);
+
+    expect($visit->captures_falconry)->toBe(1);
+
+    $component = Livewire::actingAs($user)
+        ->test(ListVisitsSpreadsheet::class)
+        ->set('tableFilters', [
+            'spreadsheet' => [
+                'client_id' => (string) $client->id,
+                'mode' => 'custom_range',
+                'date_from' => '2026-05-01',
+                'date_until' => '2026-05-31',
+            ],
+        ])
+        ->assertCanSeeTableRecords([$visit]);
+
+    $component->call('updateTableColumnState', 'visit_captures_falconry', (string) $visit->getKey(), '7');
+
+    expect($visit->fresh()->captures_falconry)->toBe(7);
+
+    $component->call(
+        'updateTableColumnState',
+        'visit_observation',
+        (string) $visit->getKey(),
+        "Se quita nido en Doblados\nSe capturan dos palomas en trampa",
+    );
+
+    $visit = $visit->fresh();
+
+    expect($visit->nests_removed)->toBe(1)
+        ->and($visit->captures_falconry)->toBe(0)
+        ->and($visit->captures_trap)->toBe(2);
+});
+
 it('builds quantity columns from deferred filter client when tableFilters is still empty', function (): void {
     $user = User::factory()->create();
     $user->assignRole('Admin');

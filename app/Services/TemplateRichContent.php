@@ -121,6 +121,9 @@ class TemplateRichContent
                 ],
                 app(VisitSpreadsheetQuantityColumns::class)->forClient($client),
             ),
+            ['key' => 'visit_nests_removed', 'label' => self::columnLabel('Nidos retirados')],
+            ['key' => 'visit_captures_falconry', 'label' => self::columnLabel('Capturas (cetreria)')],
+            ['key' => 'visit_captures_trap', 'label' => self::columnLabel('Capturas (trampa)')],
             ['key' => 'visit_observation', 'label' => self::columnLabel('Observacion')],
         ];
     }

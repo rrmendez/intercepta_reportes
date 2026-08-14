@@ -1448,6 +1448,38 @@ it('resolves canonical bird type names from aliases in expanded rows', function 
     }
 });
 
+it('extracts observation metrics when importing visits', function () {
+    $client = Client::query()->create([
+        'name' => 'Cliente Metricas',
+        'active' => true,
+    ]);
+
+    Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Predio',
+        'active' => true,
+    ]);
+
+    $csvPath = createTempCsv(implode("\n", [
+        'client_name,employee_name,employee_email,date_init,date_end,status,location_name,bird_type_name,quantity,observation,visit_observation',
+        'Cliente Metricas,Marta,,2026-04-10 08:00,2026-04-10 09:30,completed,Predio,Paloma doméstica,3,Se capturan dos palomas y se quita un nido,Se capturan dos palomas y se quita un nido',
+    ]));
+
+    try {
+        $result = app(ImportVisitExcelService::class)->import($csvPath, $client->id);
+
+        expect($result['persisted_rows'])->toBe(1);
+
+        $visit = Visit::query()->firstOrFail();
+
+        expect($visit->captures_falconry)->toBe(2)
+            ->and($visit->captures_trap)->toBe(0)
+            ->and($visit->nests_removed)->toBe(1);
+    } finally {
+        @unlink($csvPath);
+    }
+});
+
 it('marks rows invalid when canonical import references unknown bird type', function () {
     $client = Client::query()->create([
         'name' => 'Cliente Desconocido',

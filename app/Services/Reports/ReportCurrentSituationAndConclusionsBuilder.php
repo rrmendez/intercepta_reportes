@@ -6,12 +6,17 @@ namespace App\Services\Reports;
 
 use App\Models\BirdType;
 use App\Models\VisitReport;
+use App\Services\VisitObservations\VisitReportGroupMetricsResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 
 final class ReportCurrentSituationAndConclusionsBuilder
 {
+    public function __construct(
+        private readonly VisitReportGroupMetricsResolver $observationMetricsResolver,
+    ) {}
+
     /**
      * @param  Collection<int, VisitReport>  $periodVisitReports
      * @param  Collection<int, VisitReport>  $historicalVisitReports
@@ -240,29 +245,9 @@ final class ReportCurrentSituationAndConclusionsBuilder
         $total = 0;
 
         foreach ($periodVisitReports->where('bird_type_id', $birdType->getKey())->groupBy('visit_id') as $visitGroup) {
-            $text = $this->observationTextForVisitGroup($visitGroup);
+            $metrics = $this->observationMetricsResolver->resolve($visitGroup);
 
-            if ($text === '' || preg_match('/captur/u', $text) !== 1) {
-                continue;
-            }
-
-            $isTrapCapture = preg_match('/trampa/u', $text) === 1;
-
-            if ($falconry && $isTrapCapture) {
-                continue;
-            }
-
-            if (! $falconry && ! $isTrapCapture) {
-                continue;
-            }
-
-            if (preg_match('/(\d+)/u', $text, $matches) === 1) {
-                $total += (int) $matches[1];
-
-                continue;
-            }
-
-            $total++;
+            $total += $falconry ? $metrics->capturesFalconry : $metrics->capturesTrap;
         }
 
         return $total;
@@ -276,25 +261,7 @@ final class ReportCurrentSituationAndConclusionsBuilder
         $total = 0;
 
         foreach ($periodVisitReports->groupBy('visit_id') as $visitGroup) {
-            $text = $this->observationTextForVisitGroup($visitGroup);
-
-            if ($text === '') {
-                continue;
-            }
-
-            if (preg_match('/nido/u', $text) !== 1) {
-                continue;
-            }
-
-            if (preg_match('/retir/u', $text) === 1 || preg_match('/quita/u', $text) === 1) {
-                if (preg_match('/(\d+)/u', $text, $matches) === 1) {
-                    $total += (int) $matches[1];
-
-                    continue;
-                }
-
-                $total++;
-            }
+            $total += $this->observationMetricsResolver->resolve($visitGroup)->nestsRemoved;
         }
 
         return $total;
@@ -363,19 +330,5 @@ final class ReportCurrentSituationAndConclusionsBuilder
     private function birdNameForQuantity(BirdType $birdType, int $quantity): string
     {
         return $birdType->labelForPdf($quantity);
-    }
-
-    /**
-     * @param  Collection<int, VisitReport>  $visitGroup
-     */
-    private function observationTextForVisitGroup(Collection $visitGroup): string
-    {
-        $visitObservation = trim((string) ($visitGroup->first()?->visit?->observation ?? ''));
-
-        if ($visitObservation !== '') {
-            return $visitObservation;
-        }
-
-        return trim((string) ($visitGroup->first()?->observation ?? ''));
     }
 }

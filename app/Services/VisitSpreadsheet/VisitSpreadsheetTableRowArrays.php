@@ -52,6 +52,9 @@ final class VisitSpreadsheetTableRowArrays
             );
         }
 
+        $row['visit_nests_removed'] = $visit->nests_removed !== null ? (string) $visit->nests_removed : '';
+        $row['visit_captures_falconry'] = $visit->captures_falconry !== null ? (string) $visit->captures_falconry : '';
+        $row['visit_captures_trap'] = $visit->captures_trap !== null ? (string) $visit->captures_trap : '';
         $row['visit_observation'] = (string) ($visit->observation ?? '');
 
         return $row;

@@ -7,6 +7,7 @@ namespace App\Services\VisitSpreadsheet;
 use App\Models\Client;
 use App\Models\Visit;
 use App\Models\VisitReport;
+use App\Services\VisitObservations\VisitObservationMetricsExtractor;
 use Carbon\Carbon;
 use Filament\Tables\Columns\Column;
 use Filament\Tables\Columns\TextColumn;
@@ -106,6 +107,33 @@ final class VisitSpreadsheetColumns
                 ->disabled(fn (Visit $visit): bool => ! $canEditQuantitySlot($visit, $locationId, $birdTypeId));
         }
 
+        $metricColumns = [];
+
+        foreach ([
+            'visit_nests_removed' => ['field' => 'nests_removed', 'label' => 'Nidos retirados'],
+            'visit_captures_falconry' => ['field' => 'captures_falconry', 'label' => 'Capturas (cetreria)'],
+            'visit_captures_trap' => ['field' => 'captures_trap', 'label' => 'Capturas (trampa)'],
+        ] as $key => $config) {
+            $field = $config['field'];
+
+            $metricColumns[] = TextInputColumn::make($key)
+                ->label($this->label($config['label']))
+                ->type('number')
+                ->rules(['nullable', 'integer', 'min:0', 'max:'.VisitObservationMetricsExtractor::MAX_METRIC_VALUE])
+                ->getStateUsing(fn (Visit $visit): string => $visit->{$field} !== null ? (string) $visit->{$field} : '')
+                ->updateStateUsing(function (Visit $visit, mixed $state) use ($field): string {
+                    $trimmed = is_string($state) ? trim($state) : $state;
+
+                    $visit->{$field} = ($trimmed === '' || $trimmed === null)
+                        ? null
+                        : min(max(0, (int) $trimmed), VisitObservationMetricsExtractor::MAX_METRIC_VALUE);
+                    $visit->save();
+
+                    return $visit->{$field} !== null ? (string) $visit->{$field} : '';
+                })
+                ->disabled(fn (Visit $visit): bool => ! $canEditVisit($visit));
+        }
+
         return [
             TextInputColumn::make('visit_date_init')
                 ->label($this->label('Inicio'))
@@ -143,6 +171,7 @@ final class VisitSpreadsheetColumns
             TextColumn::make('employee.name')
                 ->label($this->label('Empleado')),
             ...$quantityColumns,
+            ...$metricColumns,
             TextInputColumn::make('visit_observation')
                 ->label($this->label('Observacion'))
                 ->rules(['nullable', 'string', 'max:65535'])

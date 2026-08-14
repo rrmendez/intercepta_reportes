@@ -8,6 +8,7 @@ use App\Models\BirdType;
 use App\Models\Client;
 use App\Models\Location;
 use App\Models\VisitReport;
+use App\Services\VisitObservations\VisitReportGroupMetricsResolver;
 use App\Services\VisitSpreadsheet\VisitSpreadsheetQuantityColumns;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -17,6 +18,7 @@ final class ReportServiceDetailsByLocationBuilder
 {
     public function __construct(
         private readonly VisitSpreadsheetQuantityColumns $quantityColumns,
+        private readonly VisitReportGroupMetricsResolver $observationMetricsResolver,
     ) {}
 
     /**
@@ -227,19 +229,9 @@ final class ReportServiceDetailsByLocationBuilder
         $total = 0;
 
         foreach ($locationReports->groupBy('visit_id') as $visitGroup) {
-            $text = $this->observationTextForVisitGroup($visitGroup);
+            $metrics = $this->observationMetricsResolver->resolve($visitGroup);
 
-            if ($text === '' || ! preg_match('/captur/u', $text)) {
-                continue;
-            }
-
-            if (preg_match('/(\d+)/u', $text, $matches) === 1) {
-                $total += (int) $matches[1];
-
-                continue;
-            }
-
-            $total++;
+            $total += $metrics->capturesFalconry + $metrics->capturesTrap;
         }
 
         return $total;
@@ -253,41 +245,9 @@ final class ReportServiceDetailsByLocationBuilder
         $total = 0;
 
         foreach ($locationReports->groupBy('visit_id') as $visitGroup) {
-            $text = $this->observationTextForVisitGroup($visitGroup);
-
-            if ($text === '') {
-                continue;
-            }
-
-            if (preg_match('/nido/u', $text) !== 1) {
-                continue;
-            }
-
-            if (preg_match('/retir/u', $text) === 1 || preg_match('/quita/u', $text) === 1) {
-                if (preg_match('/(\d+)/u', $text, $matches) === 1) {
-                    $total += (int) $matches[1];
-
-                    continue;
-                }
-
-                $total++;
-            }
+            $total += $this->observationMetricsResolver->resolve($visitGroup)->nestsRemoved;
         }
 
         return $total;
-    }
-
-    /**
-     * @param  Collection<int, VisitReport>  $visitGroup
-     */
-    private function observationTextForVisitGroup(Collection $visitGroup): string
-    {
-        $visitObservation = trim((string) ($visitGroup->first()?->visit?->observation ?? ''));
-
-        if ($visitObservation !== '') {
-            return $visitObservation;
-        }
-
-        return trim((string) ($visitGroup->first()?->observation ?? ''));
     }
 }

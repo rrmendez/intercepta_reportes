@@ -11,6 +11,9 @@ deployment:
     # Sin --delete y con exclusiones: NO toca vendor/, .env, storage/ ni public/build,
     # que no estan en el repo y fueron subidos/generados a mano.
     - /usr/bin/rsync -a --exclude='.git/' --exclude='.gitignore' --exclude='.cpanel.yml' --exclude='.env' --exclude='/storage/' --exclude='/vendor/' --exclude='/node_modules/' --exclude='/public/build/' --exclude='/public/storage/' ./ "$DEPLOYPATH/"
+    # rsync -a propaga los permisos del repo (700) al docroot y el webserver da 403;
+    # forzar 755 en el docroot despues de cada copia.
+    - /bin/chmod 755 "$DEPLOYPATH"
 
     # === 2. Optimizaciones de Laravel (PHP 8.3) ===
     # Si prefieres correr las migraciones a mano, elimina la linea de migrate.

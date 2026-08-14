@@ -68,6 +68,10 @@
             fn (array $column): bool => str_starts_with($column['key'], 'qty_'),
         )->values();
 
+        $visitColumnsMetricas = $visitColumns->filter(
+            fn (array $column): bool => in_array($column['key'], ['visit_nests_removed', 'visit_captures_falconry', 'visit_captures_trap'], true),
+        )->values();
+
         $visitColumnObservacion = $visitColumns->first(
             fn (array $column): bool => $column['key'] === 'visit_observation',
         );
@@ -76,6 +80,7 @@
             $visitTableChunks = collect([
                 $visitColumnsBasicas
                     ->concat($visitColumnsDynamicas)
+                    ->concat($visitColumnsMetricas)
                     ->when(
                         $visitColumnObservacion !== null,
                         fn (\Illuminate\Support\Collection $columns) => $columns->push($visitColumnObservacion),
@@ -88,9 +93,12 @@
                 ->values()
                 ->map(function (\Illuminate\Support\Collection $dynamicChunk) use (
                     $visitColumnsBasicas,
+                    $visitColumnsMetricas,
                     $visitColumnObservacion,
                 ): \Illuminate\Support\Collection {
                     $columns = $visitColumnsBasicas->concat($dynamicChunk)->values();
+
+                    $columns = $columns->concat($visitColumnsMetricas)->values();
 
                     if ($visitColumnObservacion !== null) {
                         $columns = $columns->push($visitColumnObservacion);
