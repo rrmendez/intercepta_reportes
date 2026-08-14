@@ -19,9 +19,13 @@ final class ComposeReportPdfPreviewController
         abort_if($userId <= 0, 403);
 
         $cacheKey = "compose_report_pdf_preview:{$userId}:{$token}";
-        $binary = Cache::pull($cacheKey);
+        $encoded = Cache::pull($cacheKey);
 
-        abort_if(! is_string($binary) || $binary === '', 404);
+        abort_if(! is_string($encoded) || $encoded === '', 404);
+
+        $binary = base64_decode($encoded, true);
+
+        abort_if($binary === false || $binary === '', 404);
 
         return response($binary, 200, [
             'Content-Type' => 'application/pdf',

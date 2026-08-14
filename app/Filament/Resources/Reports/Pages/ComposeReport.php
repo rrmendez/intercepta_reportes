@@ -616,9 +616,11 @@ class ComposeReport extends Page
 
         $token = Str::lower(Str::random(40));
 
+        // Base64: el cache driver `database` guarda en una columna de texto UTF-8
+        // que rechaza bytes binarios del PDF (SQLSTATE 22007 / 1366).
         Cache::put(
             "compose_report_pdf_preview:{$userId}:{$token}",
-            $binary,
+            base64_encode($binary),
             now()->addMinutes(10),
         );
 
