@@ -73,6 +73,40 @@ it('shows a muted message when there is no chart data', function (): void {
         ->and($html)->not->toContain('id="report-chart-bird-type"');
 });
 
+it('explains the line breaks only when a count could not be performed', function (): void {
+    $chartsWithGap = [
+        'charts' => [
+            [
+                'id' => 'report-chart-bird-type',
+                'title' => 'Cantidad por tipo de ave',
+                'labels' => ['10/05', '11/05', '12/05'],
+                'datasets' => [
+                    ['label' => 'Palomas', 'data' => [3, null, 5]],
+                ],
+            ],
+        ],
+    ];
+
+    $chartsWithoutGap = [
+        'charts' => [
+            [
+                'id' => 'report-chart-bird-type',
+                'title' => 'Cantidad por tipo de ave',
+                'labels' => ['10/05', '11/05'],
+                'datasets' => [
+                    ['label' => 'Palomas', 'data' => [3, 5]],
+                ],
+            ],
+        ],
+    ];
+
+    $withGap = view('pdf.partials.report-line-charts', ['report_line_charts' => $chartsWithGap])->render();
+    $withoutGap = view('pdf.partials.report-line-charts', ['report_line_charts' => $chartsWithoutGap])->render();
+
+    expect($withGap)->toContain('visitas sin conteo posible')
+        ->and($withoutGap)->not->toContain('visitas sin conteo posible');
+});
+
 it('includes line charts in default pdf template source', function (): void {
     $source = file_get_contents(resource_path('pdf-report-templates/default.blade.php'));
 

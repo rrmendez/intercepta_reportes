@@ -130,6 +130,10 @@
                 </div>
             </div>
         @endforeach
+
+        @if ($hasGaps)
+            <p class="report-fauna-evolution-page__gap-note">{{ $texto_graficos_salto }}</p>
+        @endif
     @endif
 
     <script type="application/json" id="report-charts-config">@json($chartsData)</script>

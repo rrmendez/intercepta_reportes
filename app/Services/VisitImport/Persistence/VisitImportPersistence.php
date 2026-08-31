@@ -10,6 +10,7 @@ use App\Models\Visit;
 use App\Models\VisitReport;
 use App\Services\BirdTypes\BirdTypeResolver;
 use App\Services\VisitImport\VisitImportPayload;
+use App\VisitCountStatus;
 use App\VisitStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Validation\Validator as ValidatorContract;
@@ -38,7 +39,7 @@ class VisitImportPersistence
         foreach ($payload->rows as $index => $row) {
             $sourceRowIndex = $payload->rowGroupAt((int) $index);
             $rowNumber = $sourceRowIndex + 2;
-            $preparedRow = $this->prepareRowForValidation($payload->headers, $row, $rowNumber);
+            $preparedRow = $this->prepareRow($payload->headers, $row, $rowNumber);
             $data = $preparedRow['data'];
             $warnings = array_merge($warnings, $preparedRow['warnings']);
             $validationResult = $this->validateRow($data);
@@ -88,7 +89,7 @@ class VisitImportPersistence
         foreach ($payload->rows as $index => $row) {
             $sourceRowIndex = $payload->rowGroupAt((int) $index);
             $rowNumber = $sourceRowIndex + 2;
-            $preparedRow = $this->prepareRowForValidation($payload->headers, $row, $rowNumber);
+            $preparedRow = $this->prepareRow($payload->headers, $row, $rowNumber);
             $data = $preparedRow['data'];
             $validationResult = $this->validateRow($data);
 
@@ -140,11 +141,14 @@ class VisitImportPersistence
                 Visit::query()->whereKey($visit->id)->update(['visit_import_id' => $visitImportId]);
             }
 
+            $countStatus = $this->resolveCountStatus($data);
+
             VisitReport::query()->create([
                 'visit_id' => $visit->id,
                 'location_id' => $location->id,
                 'bird_type_id' => $birdType->id,
-                'quantity' => (int) $data['quantity'],
+                'quantity' => $countStatus === VisitCountStatus::NotPerformed ? null : (int) $data['quantity'],
+                'count_status' => $countStatus,
                 'observation' => $data['observation'],
             ]);
 
@@ -248,25 +252,60 @@ class VisitImportPersistence
     }
 
     /**
+     * Mapea la fila cruda y normaliza la cantidad antes de validarla.
+     *
+     * El centinela `-1` marca un conteo que no pudo realizarse (local cerrado);
+     * se guarda como `count_status = not_performed` con cantidad nula. Cualquier
+     * otro negativo se trata como error de carga y se convierte a 0.
+     *
      * @param  array<int, string>  $headers
      * @param  array<int, string>  $row
      * @return array{data: array<string, string>, warnings: array<int, string>}
      */
-    private function prepareRowForValidation(array $headers, array $row, int $rowNumber): array
+    public function prepareRow(array $headers, array $row, int $rowNumber): array
     {
         $data = $this->mapRow($headers, $row);
         $warnings = [];
         $quantity = $data['quantity'] ?? '';
 
-        if ($quantity !== '' && is_numeric($quantity) && (float) $quantity === floor((float) $quantity) && (int) $quantity < 0) {
-            $warnings[] = 'Fila '.$rowNumber.': la cantidad '.$quantity.' es negativa y se convertira a 0.';
-            $data['quantity'] = '0';
+        if (! $this->isWholeNumber($quantity) || (int) $quantity >= 0) {
+            return [
+                'data' => $data,
+                'warnings' => $warnings,
+            ];
         }
+
+        if ((int) $quantity === VisitCountStatus::NOT_PERFORMED_SENTINEL) {
+            $warnings[] = 'Fila '.$rowNumber.': conteo no realizado (local cerrado o sin acceso); se registrara sin cantidad.';
+            $data['count_status'] = VisitCountStatus::NotPerformed->value;
+            $data['quantity'] = '0';
+
+            return [
+                'data' => $data,
+                'warnings' => $warnings,
+            ];
+        }
+
+        $warnings[] = 'Fila '.$rowNumber.': la cantidad '.$quantity.' es negativa y se convertira a 0.';
+        $data['quantity'] = '0';
 
         return [
             'data' => $data,
             'warnings' => $warnings,
         ];
+    }
+
+    /**
+     * @param  array<string, string>  $data
+     */
+    public function resolveCountStatus(array $data): VisitCountStatus
+    {
+        return VisitCountStatus::tryFrom($data['count_status'] ?? '') ?? VisitCountStatus::Counted;
+    }
+
+    private function isWholeNumber(string $value): bool
+    {
+        return $value !== '' && is_numeric($value) && (float) $value === floor((float) $value);
     }
 
     /**
@@ -297,6 +336,7 @@ class VisitImportPersistence
             'location_name' => '',
             'bird_type_name' => '',
             'quantity' => '',
+            'count_status' => VisitCountStatus::Counted->value,
             'observation' => '',
             'visit_observation' => '',
         ], $mapped);

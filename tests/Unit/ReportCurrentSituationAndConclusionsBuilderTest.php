@@ -8,7 +8,9 @@ use App\Models\Client;
 use App\Models\Employee;
 use App\Models\Location;
 use App\Models\Visit;
+use App\Models\VisitReport;
 use App\Services\Reports\ReportCurrentSituationAndConclusionsBuilder;
+use App\VisitCountStatus;
 use Database\Seeders\BirdTypeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -17,6 +19,76 @@ uses(TestCase::class, RefreshDatabase::class);
 
 beforeEach(function (): void {
     $this->seed(BirdTypeSeeder::class);
+});
+
+it('takes the baseline from the first day with an actual count', function (): void {
+    $client = Client::query()->create([
+        'name' => 'Cliente Base Cerrada',
+        'active' => true,
+        'import_mode' => ClientImportMode::SingleSectorSingleBird,
+    ]);
+
+    $location = Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Planta central',
+        'active' => true,
+    ]);
+
+    $birdType = BirdType::query()->where('slug', 'palomas')->firstOrFail();
+    $employee = Employee::query()->create(['name' => 'Tecnico', 'active' => true]);
+
+    $skippedFirstDay = seedCurrentSituationVisitReports(
+        client: $client,
+        location: $location,
+        birdType: $birdType,
+        employee: $employee,
+        date: '2025-10-15',
+        quantity: 0,
+        observation: 'Local cerrado',
+    );
+
+    VisitReport::query()->whereKey($skippedFirstDay->firstOrFail()->getKey())->update([
+        'quantity' => null,
+        'count_status' => VisitCountStatus::NotPerformed->value,
+    ]);
+
+    seedCurrentSituationVisitReports(
+        client: $client,
+        location: $location,
+        birdType: $birdType,
+        employee: $employee,
+        date: '2025-11-15',
+        quantity: 120,
+        observation: 'Relevamiento inicial',
+    );
+
+    seedCurrentSituationVisitReports(
+        client: $client,
+        location: $location,
+        birdType: $birdType,
+        employee: $employee,
+        date: '2026-03-24',
+        quantity: 30,
+        observation: 'Control del periodo',
+    );
+
+    $historicalReports = VisitReport::query()
+        ->with(['visit', 'birdType'])
+        ->whereHas('visit', fn ($query) => $query->whereYear('date_init', 2025))
+        ->get();
+
+    $periodReports = VisitReport::query()
+        ->with(['visit', 'birdType'])
+        ->whereHas('visit', fn ($query) => $query->whereYear('date_init', 2026))
+        ->get();
+
+    $builder = app(ReportCurrentSituationAndConclusionsBuilder::class);
+    $result = $builder->build($periodReports, $historicalReports);
+    $initialEntries = $builder->initialPopulationEntries($periodReports, $historicalReports);
+
+    expect($initialEntries)->toHaveCount(1)
+        ->and($initialEntries[0]['poblacion_inicial'])->toBe(120)
+        ->and($result['reduction_percentage'])->toBe('75.00');
 });
 
 it('builds current situation metrics from historical baseline and period totals', function (): void {

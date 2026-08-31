@@ -159,6 +159,41 @@ it('imports historic visits when execute mode is used', function () {
     }
 });
 
+it('imports the sentinel -1 as a count that could not be performed', function () {
+    $client = Client::query()->create([
+        'name' => 'APM',
+        'active' => true,
+    ]);
+
+    Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'APM',
+        'active' => true,
+    ]);
+
+    $directory = createTempHistoricDirectory([
+        'APM.xls' => [
+            [41219, -1],
+            [41221, 40],
+        ],
+    ]);
+
+    try {
+        $summary = app(HistoricVisitImportService::class)->processDirectory($directory, dryRun: false);
+
+        expect($summary['total_persisted_rows'])->toBe(2)
+            ->and($summary['total_visit_reports'])->toBe(2);
+
+        $skipped = VisitReport::query()->notPerformed()->get();
+
+        expect($skipped)->toHaveCount(1)
+            ->and($skipped->firstOrFail()->quantity)->toBeNull()
+            ->and(VisitReport::query()->counted()->value('quantity'))->toBe(40);
+    } finally {
+        deleteDirectoryRecursive($directory);
+    }
+});
+
 it('deletes previous historic imports before re-importing', function () {
     $client = Client::query()->create([
         'name' => 'APM',

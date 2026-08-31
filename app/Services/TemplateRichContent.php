@@ -54,6 +54,7 @@ class TemplateRichContent
      *     visits_count: int,
      *     total_observations: int,
      *     total_quantity: int,
+     *     skipped_counts: int,
      *     totals_by_bird_type: array<string, int>,
      *     totals_by_location: array<string, int>
      * }
@@ -78,6 +79,7 @@ class TemplateRichContent
             'visits_count' => $visits->count(),
             'total_observations' => $visitReports->count(),
             'total_quantity' => (int) $visitReports->sum('quantity'),
+            'skipped_counts' => $visitReports->reject(fn (VisitReport $report): bool => $report->wasCounted())->count(),
             'totals_by_bird_type' => $aggregations['totals_by_bird_type'],
             'totals_by_location' => $aggregations['totals_by_location'],
         ];
@@ -89,14 +91,16 @@ class TemplateRichContent
      */
     public static function aggregations(Collection $visitReports): array
     {
+        $counted = $visitReports->filter(fn (VisitReport $report): bool => $report->wasCounted());
+
         return [
-            'totals_by_bird_type' => $visitReports
+            'totals_by_bird_type' => $counted
                 ->groupBy('bird_type_id')
                 ->mapWithKeys(fn (Collection $group): array => [
                     (string) $group->first()?->birdType?->name => (int) $group->sum('quantity'),
                 ])
                 ->all(),
-            'totals_by_location' => $visitReports
+            'totals_by_location' => $counted
                 ->groupBy('location_id')
                 ->mapWithKeys(fn (Collection $group): array => [
                     (string) $group->first()?->location?->name => (int) $group->sum('quantity'),

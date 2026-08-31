@@ -14,6 +14,14 @@ final class ReportChartSeriesBuilder
 {
     private const int MAX_SERIES = 8;
 
+    private const int POINT_RADIUS = 2;
+
+    private const int GAP_EDGE_POINT_RADIUS = 4;
+
+    private const string POINT_STYLE = 'circle';
+
+    private const string GAP_EDGE_POINT_STYLE = 'crossRot';
+
     /**
      * @var list<string>
      */
@@ -71,7 +79,7 @@ final class ReportChartSeriesBuilder
     /**
      * @param  list<string>  $labels
      * @param  list<string>  $dayKeys
-     * @param  array<string, array<string, int>>  $matrix
+     * @param  array<string, array<string, int|null>>  $matrix
      * @return array{id: string, title: string, labels: list<string>, datasets: list<array<string, mixed>>, x_axis_label: string, y_axis_label: string}
      */
     private function faunaEvolutionChartDefinition(
@@ -94,14 +102,13 @@ final class ReportChartSeriesBuilder
 
     /**
      * @param  Collection<int, VisitReport>  $visitReports
-     * @return array{labels: list<string>, day_keys: list<string>, matrix: array<string, array<string, int>>}
+     * @return array{labels: list<string>, day_keys: list<string>, matrix: array<string, array<string, int|null>>}
      */
     private function buildBirdCountsByVisitDay(Collection $visitReports): array
     {
         /** @var array<string, true> $dayKeySet */
         $dayKeySet = [];
-        /** @var array<string, array<string, int>> $matrix */
-        $matrix = [];
+        $accumulator = new ChartSeriesAccumulator;
 
         foreach ($visitReports as $report) {
             $visitDate = $report->visit?->date_init;
@@ -119,23 +126,13 @@ final class ReportChartSeriesBuilder
             $dayKey = CarbonImmutable::parse($visitDate)->toDateString();
             $dayKeySet[$dayKey] = true;
 
-            if (! isset($matrix[$birdName])) {
-                $matrix[$birdName] = [];
-            }
-
-            $matrix[$birdName][$dayKey] = ($matrix[$birdName][$dayKey] ?? 0) + (int) $report->quantity;
+            $accumulator->add($birdName, $dayKey, $report);
         }
 
         $dayKeys = array_keys($dayKeySet);
         sort($dayKeys);
 
-        foreach ($matrix as $birdName => $pointsByDay) {
-            foreach ($dayKeys as $dayKey) {
-                if (! array_key_exists($dayKey, $pointsByDay)) {
-                    $matrix[$birdName][$dayKey] = 0;
-                }
-            }
-        }
+        $matrix = $accumulator->toMatrix($dayKeys);
 
         $labels = array_map(
             fn (string $dayKey): string => CarbonImmutable::parse($dayKey)->format('d/m/Y'),
@@ -201,7 +198,8 @@ final class ReportChartSeriesBuilder
         Collection $visitReports,
         callable $seriesResolver,
     ): array {
-        $matrix = [];
+        $accumulator = new ChartSeriesAccumulator;
+        $dayKeySet = array_fill_keys($dayKeys, true);
 
         foreach ($visitReports as $report) {
             $visitDate = $report->visit?->date_init;
@@ -211,20 +209,15 @@ final class ReportChartSeriesBuilder
             }
 
             $dayKey = CarbonImmutable::parse($visitDate)->toDateString();
-            $seriesName = $seriesResolver($report);
 
-            if (! isset($matrix[$seriesName])) {
-                $matrix[$seriesName] = array_fill_keys($dayKeys, 0);
-            }
-
-            if (! array_key_exists($dayKey, $matrix[$seriesName])) {
+            if (! array_key_exists($dayKey, $dayKeySet)) {
                 continue;
             }
 
-            $matrix[$seriesName][$dayKey] += (int) $report->quantity;
+            $accumulator->add($seriesResolver($report), $dayKey, $report);
         }
 
-        $datasets = $this->datasetsFromMatrix($matrix, $dayKeys);
+        $datasets = $this->datasetsFromMatrix($accumulator->toMatrix($dayKeys), $dayKeys);
 
         return [
             'id' => $id,
@@ -235,7 +228,7 @@ final class ReportChartSeriesBuilder
     }
 
     /**
-     * @param  array<string, array<string, int>>  $matrix
+     * @param  array<string, array<string, int|null>>  $matrix
      * @param  list<string>  $dayKeys
      * @return list<array<string, mixed>>
      */
@@ -259,19 +252,88 @@ final class ReportChartSeriesBuilder
             $color = self::PALETTE[$colorIndex % count(self::PALETTE)];
             $colorIndex++;
 
+            $data = array_map(
+                fn (string $dayKey): ?int => array_key_exists($dayKey, $pointsByDay)
+                    ? $pointsByDay[$dayKey]
+                    : 0,
+                $dayKeys,
+            );
+
             $datasets[] = [
                 'label' => $label,
-                'data' => array_map(fn (string $dayKey): int => (int) ($pointsByDay[$dayKey] ?? 0), $dayKeys),
+                'data' => $data,
                 'borderColor' => $color,
                 'backgroundColor' => $color,
                 'borderWidth' => 2,
-                'pointRadius' => 2,
+                'pointRadius' => $this->pointRadii($data),
+                'pointStyle' => $this->pointStyles($data),
+                'spanGaps' => false,
                 'tension' => 0.2,
                 'fill' => false,
             ];
         }
 
         return $datasets;
+    }
+
+    /**
+     * Los puntos que bordean un corte se agrandan para que el salto se lea como
+     * "sin conteo" y no como un problema de renderizado.
+     *
+     * @param  list<int|null>  $data
+     * @return list<int>|int
+     */
+    private function pointRadii(array $data): array|int
+    {
+        if (! $this->hasGaps($data)) {
+            return self::POINT_RADIUS;
+        }
+
+        return array_map(
+            fn (int $index): int => $this->isGapEdge($data, $index)
+                ? self::GAP_EDGE_POINT_RADIUS
+                : self::POINT_RADIUS,
+            array_keys($data),
+        );
+    }
+
+    /**
+     * @param  list<int|null>  $data
+     * @return list<string>|string
+     */
+    private function pointStyles(array $data): array|string
+    {
+        if (! $this->hasGaps($data)) {
+            return self::POINT_STYLE;
+        }
+
+        return array_map(
+            fn (int $index): string => $this->isGapEdge($data, $index)
+                ? self::GAP_EDGE_POINT_STYLE
+                : self::POINT_STYLE,
+            array_keys($data),
+        );
+    }
+
+    /**
+     * @param  list<int|null>  $data
+     */
+    private function hasGaps(array $data): bool
+    {
+        return in_array(null, $data, true);
+    }
+
+    /**
+     * @param  list<int|null>  $data
+     */
+    private function isGapEdge(array $data, int $index): bool
+    {
+        if ($data[$index] === null) {
+            return false;
+        }
+
+        return array_key_exists($index - 1, $data) && $data[$index - 1] === null
+            || array_key_exists($index + 1, $data) && $data[$index + 1] === null;
     }
 
     /**

@@ -60,7 +60,7 @@ final class ReportBladeVariableReference
 
             if (str_starts_with($key, 'report_') || in_array($key, [
                 'client', 'report', 'period_label', 'visits', 'visit_columns', 'visit_reports',
-                'visits_count', 'total_quantity', 'totals_by_bird_type', 'totals_by_location',
+                'visits_count', 'total_quantity', 'skipped_counts', 'totals_by_bird_type', 'totals_by_location',
                 'dateFrom', 'dateUntil', 'aggregations', 'coverHeaderImageUrl',
             ], true)) {
                 continue;

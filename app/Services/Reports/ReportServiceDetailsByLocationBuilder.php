@@ -16,6 +16,8 @@ use Illuminate\Support\Collection;
 
 final class ReportServiceDetailsByLocationBuilder
 {
+    private const string NOT_PERFORMED_LABEL = 'Sin conteo (local cerrado o sin acceso)';
+
     public function __construct(
         private readonly VisitSpreadsheetQuantityColumns $quantityColumns,
         private readonly VisitReportGroupMetricsResolver $observationMetricsResolver,
@@ -187,12 +189,22 @@ final class ReportServiceDetailsByLocationBuilder
     }
 
     /**
+     * Los conteos que no pudieron realizarse no se informan como cero: se listan
+     * aparte para no confundirlos con una ausencia real de aves.
+     *
      * @param  Collection<int, VisitReport>  $visitReports
      */
     private function formatAbundanceByBirdType(Collection $visitReports): string
     {
-        $lines = $visitReports
-            ->groupBy('bird_type_id')
+        $countedByBirdType = $visitReports
+            ->filter(fn (VisitReport $report): bool => $report->wasCounted())
+            ->groupBy('bird_type_id');
+
+        if ($countedByBirdType->isEmpty()) {
+            return $visitReports->isEmpty() ? '—' : self::NOT_PERFORMED_LABEL;
+        }
+
+        $lines = $countedByBirdType
             ->sortKeys()
             ->map(function (Collection $group): string {
                 $birdType = $group->first()?->birdType;
@@ -214,11 +226,35 @@ final class ReportServiceDetailsByLocationBuilder
             ->values()
             ->all();
 
+        $countedBirdTypeIds = $countedByBirdType->keys()->map(fn (mixed $id): int => (int) $id)->all();
+        $skippedNames = $this->skippedBirdTypeNames($visitReports, $countedBirdTypeIds);
+
+        if ($skippedNames !== []) {
+            $lines[] = self::NOT_PERFORMED_LABEL.': '.implode(', ', $skippedNames);
+        }
+
         if ($lines === []) {
             return '—';
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * @param  Collection<int, VisitReport>  $visitReports
+     * @param  list<int>  $countedBirdTypeIds
+     * @return list<string>
+     */
+    private function skippedBirdTypeNames(Collection $visitReports, array $countedBirdTypeIds): array
+    {
+        return $visitReports
+            ->filter(fn (VisitReport $report): bool => ! $report->wasCounted())
+            ->reject(fn (VisitReport $report): bool => in_array((int) $report->bird_type_id, $countedBirdTypeIds, true))
+            ->groupBy('bird_type_id')
+            ->sortKeys()
+            ->map(fn (Collection $group): string => (string) ($group->first()?->birdType?->name ?? 'Sin tipo'))
+            ->values()
+            ->all();
     }
 
     /**

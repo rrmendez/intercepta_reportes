@@ -10,6 +10,7 @@ use App\Models\Visit;
 use App\Models\VisitReport;
 use App\Services\VisitImport\Persistence\VisitImportPersistence;
 use App\Services\VisitImport\VisitImportPayload;
+use App\VisitCountStatus;
 use App\VisitStatus;
 use Carbon\CarbonImmutable;
 
@@ -38,7 +39,11 @@ final class HistoricVisitImportPersistence
 
         foreach ($payload->rows as $index => $row) {
             $sourceRowIndex = $payload->rowGroupAt((int) $index);
-            $data = $this->mapRow($payload->headers, $row);
+            $data = $this->visitImportPersistence->prepareRow(
+                $payload->headers,
+                $row,
+                $sourceRowIndex + 2,
+            )['data'];
             $validationResult = $this->visitImportPersistence->validateRowData($data);
 
             if (! $validationResult['is_valid']) {
@@ -84,11 +89,14 @@ final class HistoricVisitImportPersistence
 
             Visit::query()->whereKey($visit->id)->update(['visit_import_id' => $visitImportId]);
 
+            $countStatus = $this->visitImportPersistence->resolveCountStatus($data);
+
             VisitReport::query()->create([
                 'visit_id' => $visit->id,
                 'location_id' => $location->id,
                 'bird_type_id' => $birdType->id,
-                'quantity' => (int) $data['quantity'],
+                'quantity' => $countStatus === VisitCountStatus::NotPerformed ? null : (int) $data['quantity'],
+                'count_status' => $countStatus,
                 'observation' => $data['observation'],
             ]);
 
@@ -106,34 +114,5 @@ final class HistoricVisitImportPersistence
             'skipped_rows' => $skippedRows,
             'visit_reports' => $visitReportsCreated,
         ];
-    }
-
-    /**
-     * @param  array<int, string>  $headers
-     * @param  array<int, string>  $row
-     * @return array<string, string>
-     */
-    private function mapRow(array $headers, array $row): array
-    {
-        /** @var array<string, string> $mapped */
-        $mapped = collect($headers)
-            ->mapWithKeys(fn (string $header, int $index): array => [
-                $header => trim((string) ($row[$index] ?? '')),
-            ])
-            ->all();
-
-        return array_merge([
-            'client_name' => '',
-            'employee_name' => '',
-            'employee_email' => '',
-            'date_init' => '',
-            'date_end' => '',
-            'status' => '',
-            'location_name' => '',
-            'bird_type_name' => '',
-            'quantity' => '',
-            'observation' => '',
-            'visit_observation' => '',
-        ], $mapped);
     }
 }

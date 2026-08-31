@@ -24,7 +24,7 @@ class VisitObservationsBlock extends ReportTemplateBlock
                     static::date($visitReport->visit?->date_init),
                     $visitReport->location?->name ?? '-',
                     $visitReport->birdType?->name ?? '-',
-                    $visitReport->quantity,
+                    $visitReport->wasCounted() ? (string) $visitReport->quantity : 'Sin conteo',
                     $visitReport->observation ?: '-',
                 ];
             })

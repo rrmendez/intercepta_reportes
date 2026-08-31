@@ -2,6 +2,7 @@
 
 namespace App\Services\HistoricVisitImport;
 
+use App\VisitCountStatus;
 use Illuminate\Support\Collection;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -219,6 +220,9 @@ final class HistoricVisitSpreadsheetReader
         return is_string($value) && is_numeric(trim($value));
     }
 
+    /**
+     * Acepta enteros no negativos y el centinela de conteo no realizado.
+     */
     private function isQuantityCellValue(mixed $value): bool
     {
         if (! $this->isNumericCellValue($value)) {
@@ -227,11 +231,11 @@ final class HistoricVisitSpreadsheetReader
 
         $numeric = (float) $value;
 
-        if ($numeric < 0) {
+        if (abs($numeric - round($numeric)) >= 0.0001) {
             return false;
         }
 
-        return abs($numeric - round($numeric)) < 0.0001;
+        return $numeric >= 0 || (int) round($numeric) === VisitCountStatus::NOT_PERFORMED_SENTINEL;
     }
 
     private function normalizeHeaderToken(string $value): string

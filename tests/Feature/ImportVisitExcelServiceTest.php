@@ -11,6 +11,7 @@ use App\Models\VisitImport;
 use App\Services\BirdTypes\BirdTypeResolver;
 use App\Services\ImportVisitExcelService;
 use App\Services\VisitImport\Persistence\VisitImportPersistence;
+use App\VisitCountStatus;
 use Database\Seeders\BirdTypeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -1314,7 +1315,57 @@ it('surfaces preview errors for invalid integer quantities', function () {
     }
 });
 
-it('converts negative quantities to zero with a warning instead of rejecting the row', function () {
+it('marks the sentinel -1 as a count that could not be performed', function () {
+    $client = Client::query()->create([
+        'name' => 'Cliente Sin Conteo',
+        'active' => true,
+    ]);
+
+    foreach (['Jumbos', 'Conversiones'] as $name) {
+        Location::query()->create([
+            'client_id' => $client->id,
+            'name' => $name,
+            'active' => true,
+        ]);
+    }
+
+    $csvPath = createTempCsv(implode("\n", [
+        'Fecha,Entrada,Salida,Jumbos,Conversiones,Observaciones,Nombre de usuario',
+        '2026-04-10,08:00,09:30,-1,2,Local cerrado,Marta',
+    ]));
+
+    try {
+        $preview = app(ImportVisitExcelService::class)->preview($csvPath, $client->id);
+
+        expect($preview['valid_rows'])->toBe(1)
+            ->and($preview['invalid_rows'])->toBe(0)
+            ->and($preview['errors'])->toBeEmpty()
+            ->and($preview['warnings'])->toContain('Fila 2: conteo no realizado (local cerrado o sin acceso); se registrara sin cantidad.');
+
+        $result = app(ImportVisitExcelService::class)->import($csvPath, $client->id);
+
+        expect($result['persisted_rows'])->toBe(1);
+
+        $visitReports = Visit::query()
+            ->with('visitReports')
+            ->firstOrFail()
+            ->visitReports
+            ->sortBy('location_id')
+            ->values();
+
+        $notPerformed = $visitReports->firstWhere('count_status', VisitCountStatus::NotPerformed);
+        $counted = $visitReports->firstWhere('count_status', VisitCountStatus::Counted);
+
+        expect($visitReports)->toHaveCount(2)
+            ->and($notPerformed->quantity)->toBeNull()
+            ->and($notPerformed->observation)->toBe('Local cerrado')
+            ->and($counted->quantity)->toBe(2);
+    } finally {
+        @unlink($csvPath);
+    }
+});
+
+it('converts negative quantities other than the sentinel to zero with a warning', function () {
     $client = Client::query()->create([
         'name' => 'Cliente Negativos',
         'active' => true,
@@ -1330,7 +1381,7 @@ it('converts negative quantities to zero with a warning instead of rejecting the
 
     $csvPath = createTempCsv(implode("\n", [
         'Fecha,Entrada,Salida,Jumbos,Conversiones,Observaciones,Nombre de usuario',
-        '2026-04-10,08:00,09:30,-1,2,Local errado,Marta',
+        '2026-04-10,08:00,09:30,-5,2,Local errado,Marta',
     ]));
 
     try {
@@ -1339,12 +1390,12 @@ it('converts negative quantities to zero with a warning instead of rejecting the
         expect($preview['valid_rows'])->toBe(1)
             ->and($preview['invalid_rows'])->toBe(0)
             ->and($preview['errors'])->toBeEmpty()
-            ->and($preview['warnings'])->toContain('Fila 2: la cantidad -1 es negativa y se convertira a 0.');
+            ->and($preview['warnings'])->toContain('Fila 2: la cantidad -5 es negativa y se convertira a 0.');
 
         $result = app(ImportVisitExcelService::class)->import($csvPath, $client->id);
 
         expect($result['persisted_rows'])->toBe(1)
-            ->and($result['warnings'])->toContain('Fila 2: la cantidad -1 es negativa y se convertira a 0.');
+            ->and($result['warnings'])->toContain('Fila 2: la cantidad -5 es negativa y se convertira a 0.');
 
         $visitReports = Visit::query()
             ->with('visitReports')
@@ -1355,6 +1406,7 @@ it('converts negative quantities to zero with a warning instead of rejecting the
 
         expect($visitReports)->toHaveCount(2)
             ->and($visitReports[0]->quantity)->toBe(0)
+            ->and($visitReports[0]->count_status)->toBe(VisitCountStatus::Counted)
             ->and($visitReports[0]->observation)->toBe('Local errado')
             ->and($visitReports[1]->quantity)->toBe(2);
     } finally {

@@ -14,6 +14,7 @@ use App\Models\VisitReport;
 use App\Services\ReportBladeStringRenderer;
 use App\Services\ReportPdfTemplateDefaults;
 use App\Services\TemplateRichContent;
+use App\VisitCountStatus;
 use Database\Seeders\BirdTypeSeeder;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -35,6 +36,37 @@ it('aggregates visit reports by bird type and location', function (): void {
         ->and($aggregations['totals_by_bird_type']['Palomas'])->toBe(3)
         ->and($aggregations['totals_by_location'])->toHaveKey('Recepcion')
         ->and($aggregations['totals_by_location']['Recepcion'])->toBe(3);
+});
+
+it('excludes counts that could not be performed from the aggregations', function (): void {
+    [$client, $visitReports, $visits] = createClientVisitReportFixture();
+
+    $visit = $visits->firstOrFail();
+    $cotorras = BirdType::query()->where('slug', 'cotorras')->firstOrFail();
+
+    VisitReport::query()->create([
+        'visit_id' => $visit->id,
+        'location_id' => $visit->visitReports->firstOrFail()->location_id,
+        'bird_type_id' => $cotorras->id,
+        'quantity' => null,
+        'count_status' => VisitCountStatus::NotPerformed,
+    ]);
+
+    $visitReports = VisitReport::query()->with(['visit', 'location', 'birdType'])->get();
+    $aggregations = TemplateRichContent::aggregations($visitReports);
+
+    $rich = TemplateRichContent::reportData(
+        client: $client,
+        periodLabel: 'Mayo 2026',
+        visits: $visits,
+        visitReports: $visitReports,
+        aggregations: $aggregations,
+    );
+
+    expect($aggregations['totals_by_bird_type'])->not->toHaveKey('Cotorras')
+        ->and($aggregations['totals_by_location']['Recepcion'])->toBe(3)
+        ->and($rich['total_quantity'])->toBe(3)
+        ->and($rich['skipped_counts'])->toBe(1);
 });
 
 it('creates and saves the active client pdf blade template from the Filament page', function (): void {

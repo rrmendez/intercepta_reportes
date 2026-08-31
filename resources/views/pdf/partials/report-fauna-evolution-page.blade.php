@@ -6,8 +6,14 @@
     $chartsData = $graficos_evolucion_fauna ?? $report_fauna_evolution_charts ?? [];
     $charts = $chartsData['charts'] ?? [];
     $texto_graficos_sin_datos = $texto_graficos_sin_datos ?? 'Sin datos de visitas para graficar en este período.';
+    $texto_graficos_salto = $texto_graficos_salto ?? 'Los cortes en las líneas corresponden a visitas sin conteo posible (por ejemplo, local cerrado).';
     $hasData = collect($charts)->contains(
         fn (array $chart): bool => ! empty($chart['datasets'] ?? []),
+    );
+    $hasGaps = collect($charts)->contains(
+        fn (array $chart): bool => collect($chart['datasets'] ?? [])->contains(
+            fn (array $dataset): bool => in_array(null, $dataset['data'] ?? [], true),
+        ),
     );
 @endphp
 <style>
@@ -66,6 +72,13 @@
         height: auto;
     }
 
+    .report-fauna-evolution-page__gap-note {
+        margin: 4mm 0 0;
+        color: #6b7280;
+        font-size: 9pt;
+        font-style: italic;
+    }
+
     .report-fauna-evolution-page__empty {
         margin: 0;
         padding: 4mm;
@@ -96,6 +109,10 @@
                 </div>
             </div>
         @endforeach
+
+        @if ($hasGaps)
+            <p class="report-fauna-evolution-page__gap-note">{{ $texto_graficos_salto }}</p>
+        @endif
     @endif
 
     <script type="application/json" id="report-charts-config">@json($chartsData)</script>

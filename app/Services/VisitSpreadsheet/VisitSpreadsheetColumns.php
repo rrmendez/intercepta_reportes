@@ -8,6 +8,7 @@ use App\Models\Client;
 use App\Models\Visit;
 use App\Models\VisitReport;
 use App\Services\VisitObservations\VisitObservationMetricsExtractor;
+use App\VisitCountStatus;
 use Carbon\Carbon;
 use Filament\Tables\Columns\Column;
 use Filament\Tables\Columns\TextColumn;
@@ -17,6 +18,8 @@ use Illuminate\Support\Str;
 final class VisitSpreadsheetColumns
 {
     private const string SPREADSHEET_DATETIME_FORMAT = 'd/m/Y H:i';
+
+    private const string NOT_PERFORMED_HINT = 'Escribi -1 si no se pudo hacer el conteo (local cerrado o sin acceso).';
 
     /**
      * @return array<Column>
@@ -57,13 +60,20 @@ final class VisitSpreadsheetColumns
             $quantityColumns[] = TextInputColumn::make($spec['key'])
                 ->label($this->label((string) $spec['label']))
                 ->type('number')
-                ->rules(['nullable', 'integer', 'min:0'])
+                ->tooltip(self::NOT_PERFORMED_HINT)
+                ->rules(['nullable', 'integer', 'min:'.VisitCountStatus::NOT_PERFORMED_SENTINEL])
                 ->getStateUsing(function (Visit $visit) use ($locationId, $birdTypeId): string {
                     $report = $visit->visitReports->first(
                         fn (VisitReport $r): bool => (int) $r->location_id === $locationId && (int) $r->bird_type_id === $birdTypeId
                     );
 
-                    return $report !== null ? (string) $report->quantity : '';
+                    if ($report === null) {
+                        return '';
+                    }
+
+                    return $report->wasCounted()
+                        ? (string) $report->quantity
+                        : (string) VisitCountStatus::NOT_PERFORMED_SENTINEL;
                 })
                 ->updateStateUsing(function (Visit $visit, mixed $state) use ($locationId, $birdTypeId, $canEditQuantitySlot): ?string {
                     if (! $canEditQuantitySlot($visit, $locationId, $birdTypeId)) {
@@ -87,22 +97,27 @@ final class VisitSpreadsheetColumns
                         return $report !== null ? '0' : '';
                     }
 
-                    $qty = max(0, (int) $trimmed);
+                    $notPerformed = (int) $trimmed === VisitCountStatus::NOT_PERFORMED_SENTINEL;
+                    $qty = $notPerformed ? null : max(0, (int) $trimmed);
 
                     if ($report === null) {
-                        VisitReport::query()->create([
+                        $report = new VisitReport([
                             'visit_id' => (int) $visit->getKey(),
                             'location_id' => $locationId,
                             'bird_type_id' => $birdTypeId,
-                            'quantity' => $qty,
                             'observation' => null,
                         ]);
-                    } else {
-                        $report->quantity = $qty;
-                        $report->save();
                     }
 
-                    return (string) $qty;
+                    $report->quantity = $qty;
+                    $report->count_status = $notPerformed
+                        ? VisitCountStatus::NotPerformed
+                        : VisitCountStatus::Counted;
+                    $report->save();
+
+                    return $notPerformed
+                        ? (string) VisitCountStatus::NOT_PERFORMED_SENTINEL
+                        : (string) $qty;
                 })
                 ->disabled(fn (Visit $visit): bool => ! $canEditQuantitySlot($visit, $locationId, $birdTypeId));
         }

@@ -6,8 +6,14 @@
     $chartsData = $graficos_lineas_periodo ?? $report_line_charts ?? [];
     $charts = $chartsData['charts'] ?? [];
     $texto_graficos_sin_datos = $texto_graficos_sin_datos ?? 'Sin datos de visitas para graficar en este período.';
+    $texto_graficos_salto = $texto_graficos_salto ?? 'Los cortes en las líneas corresponden a visitas sin conteo posible (por ejemplo, local cerrado).';
     $hasData = collect($charts)->contains(
         fn (array $chart): bool => ! empty($chart['datasets'] ?? []),
+    );
+    $hasGaps = collect($charts)->contains(
+        fn (array $chart): bool => collect($chart['datasets'] ?? [])->contains(
+            fn (array $dataset): bool => in_array(null, $dataset['data'] ?? [], true),
+        ),
     );
 @endphp
 <section
@@ -33,6 +39,10 @@
                 ></canvas>
             </div>
         @endforeach
+
+        @if ($hasGaps)
+            <p class="muted report-line-charts__gap-note">{{ $texto_graficos_salto }}</p>
+        @endif
     @endif
 
     <script type="application/json" id="report-charts-config">@json($chartsData)</script>

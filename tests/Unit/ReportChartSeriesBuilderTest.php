@@ -7,6 +7,7 @@ use App\Models\Location;
 use App\Models\Visit;
 use App\Models\VisitReport;
 use App\Services\Reports\ReportChartSeriesBuilder;
+use App\VisitCountStatus;
 use Database\Seeders\BirdTypeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -110,6 +111,166 @@ it('builds daily line chart series grouped by bird type and location', function 
 
     expect($sectorADataset['data'])->toBe([3, 0, 5])
         ->and($sectorBDataset['data'])->toBe([2, 0, 0]);
+});
+
+it('breaks the line on days where the count could not be performed', function (): void {
+    $client = Client::query()->create([
+        'name' => 'Cliente sin conteo',
+        'active' => true,
+    ]);
+
+    $employee = Employee::query()->create([
+        'name' => 'Tecnico',
+        'active' => true,
+    ]);
+
+    $location = Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Sector A',
+        'active' => true,
+    ]);
+
+    $palomas = BirdType::query()->where('name', 'Palomas')->firstOrFail();
+
+    $visits = collect(['2026-05-10', '2026-05-11', '2026-05-12'])
+        ->map(fn (string $date): Visit => Visit::query()->create([
+            'client_id' => $client->id,
+            'employee_id' => $employee->id,
+            'date_init' => $date.' 09:00:00',
+            'date_end' => $date.' 10:00:00',
+        ]));
+
+    foreach ([[0, 4, VisitCountStatus::Counted], [1, null, VisitCountStatus::NotPerformed], [2, 6, VisitCountStatus::Counted]] as [$index, $quantity, $status]) {
+        VisitReport::query()->create([
+            'visit_id' => $visits[$index]->id,
+            'location_id' => $location->id,
+            'bird_type_id' => $palomas->id,
+            'quantity' => $quantity,
+            'count_status' => $status,
+        ]);
+    }
+
+    $visitReports = VisitReport::query()
+        ->with(['visit', 'location', 'birdType'])
+        ->get();
+
+    $config = app(ReportChartSeriesBuilder::class)->build(
+        $visitReports,
+        '2026-05-10',
+        '2026-05-12',
+    );
+
+    $palomasDataset = collect($config['charts'][0]['datasets'])->firstWhere('label', 'Palomas');
+
+    expect($palomasDataset['data'])->toBe([4, null, 6])
+        ->and($palomasDataset['spanGaps'])->toBeFalse()
+        ->and($palomasDataset['pointStyle'])->toBe(['crossRot', 'circle', 'crossRot'])
+        ->and($palomasDataset['pointRadius'])->toBe([4, 2, 4]);
+});
+
+it('keeps zero for days without any visit and null only for skipped counts', function (): void {
+    $client = Client::query()->create([
+        'name' => 'Cliente mixto',
+        'active' => true,
+    ]);
+
+    $employee = Employee::query()->create([
+        'name' => 'Tecnico',
+        'active' => true,
+    ]);
+
+    $location = Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Sector A',
+        'active' => true,
+    ]);
+
+    $palomas = BirdType::query()->where('name', 'Palomas')->firstOrFail();
+
+    $visit = Visit::query()->create([
+        'client_id' => $client->id,
+        'employee_id' => $employee->id,
+        'date_init' => '2026-05-11 09:00:00',
+        'date_end' => '2026-05-11 10:00:00',
+    ]);
+
+    VisitReport::query()->create([
+        'visit_id' => $visit->id,
+        'location_id' => $location->id,
+        'bird_type_id' => $palomas->id,
+        'quantity' => null,
+        'count_status' => VisitCountStatus::NotPerformed,
+    ]);
+
+    $config = app(ReportChartSeriesBuilder::class)->build(
+        VisitReport::query()->with(['visit', 'location', 'birdType'])->get(),
+        '2026-05-10',
+        '2026-05-12',
+    );
+
+    $palomasDataset = collect($config['charts'][0]['datasets'])->firstWhere('label', 'Palomas');
+
+    expect($palomasDataset['data'])->toBe([0, null, 0]);
+});
+
+it('sums the sectors that were counted when only some are skipped', function (): void {
+    $client = Client::query()->create([
+        'name' => 'Cliente parcial',
+        'active' => true,
+    ]);
+
+    $employee = Employee::query()->create([
+        'name' => 'Tecnico',
+        'active' => true,
+    ]);
+
+    $locationA = Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Sector A',
+        'active' => true,
+    ]);
+
+    $locationB = Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Sector B',
+        'active' => true,
+    ]);
+
+    $palomas = BirdType::query()->where('name', 'Palomas')->firstOrFail();
+
+    $visit = Visit::query()->create([
+        'client_id' => $client->id,
+        'employee_id' => $employee->id,
+        'date_init' => '2026-05-10 09:00:00',
+        'date_end' => '2026-05-10 10:00:00',
+    ]);
+
+    VisitReport::query()->create([
+        'visit_id' => $visit->id,
+        'location_id' => $locationA->id,
+        'bird_type_id' => $palomas->id,
+        'quantity' => 7,
+    ]);
+
+    VisitReport::query()->create([
+        'visit_id' => $visit->id,
+        'location_id' => $locationB->id,
+        'bird_type_id' => $palomas->id,
+        'quantity' => null,
+        'count_status' => VisitCountStatus::NotPerformed,
+    ]);
+
+    $config = app(ReportChartSeriesBuilder::class)->build(
+        VisitReport::query()->with(['visit', 'location', 'birdType'])->get(),
+        '2026-05-10',
+        '2026-05-10',
+    );
+
+    $byBirdType = collect($config['charts'][0]['datasets'])->firstWhere('label', 'Palomas');
+    $sectorB = collect($config['charts'][1]['datasets'])->firstWhere('label', 'Sector B');
+
+    expect($byBirdType['data'])->toBe([7])
+        ->and($sectorB['data'])->toBe([null]);
 });
 
 it('returns empty datasets when there are no visit reports', function (): void {

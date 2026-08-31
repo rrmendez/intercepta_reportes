@@ -9,6 +9,7 @@ use App\Models\BirdType;
 use App\Models\Location;
 use App\Models\Visit;
 use App\Services\VisitObservations\VisitObservationMetricsExtractor;
+use App\VisitCountStatus;
 use App\VisitStatus;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
@@ -138,12 +139,20 @@ class VisitResource extends Resource
                                     ->searchable()
                                     ->preload()
                                     ->required(),
+                                Select::make('count_status')
+                                    ->label('Estado del conteo')
+                                    ->options(VisitCountStatus::options())
+                                    ->default(VisitCountStatus::Counted->value)
+                                    ->selectablePlaceholder(false)
+                                    ->live()
+                                    ->helperText('Usa "Sin conteo" cuando la visita se hizo pero no se pudo contar (local cerrado o sin acceso).'),
                                 TextInput::make('quantity')
                                     ->label('Cantidad')
                                     ->numeric()
                                     ->integer()
-                                    ->minValue(1)
-                                    ->required(),
+                                    ->minValue(0)
+                                    ->required(fn (Get $get): bool => ! self::isNotPerformed($get))
+                                    ->disabled(fn (Get $get): bool => self::isNotPerformed($get)),
                                 Textarea::make('observation')
                                     ->label('Observacion')
                                     ->rows(2)
@@ -269,6 +278,14 @@ class VisitResource extends Resource
     public static function getPluralModelLabel(): string
     {
         return 'visitas';
+    }
+
+    private static function isNotPerformed(Get $get): bool
+    {
+        $state = $get('count_status');
+
+        return $state === VisitCountStatus::NotPerformed
+            || $state === VisitCountStatus::NotPerformed->value;
     }
 
     public static function getPages(): array

@@ -12,10 +12,15 @@ use Illuminate\Support\Collection;
 
 /**
  * Builds visit rows for PDF Blade data using the same keys and cell values as {@see VisitSpreadsheetColumns}.
+ *
+ * Unica divergencia: un conteo no realizado se escribe como texto para el
+ * cliente, en lugar del centinela numerico que se usa en la planilla editable.
  */
 final class VisitSpreadsheetTableRowArrays
 {
     private const string DATETIME_FORMAT = 'd/m/Y H:i';
+
+    private const string NOT_PERFORMED_LABEL = 'Sin conteo';
 
     public function __construct(
         private readonly VisitSpreadsheetQuantityColumns $quantityColumns,
@@ -66,7 +71,11 @@ final class VisitSpreadsheetTableRowArrays
             fn (VisitReport $r): bool => (int) $r->location_id === $locationId && (int) $r->bird_type_id === $birdTypeId,
         );
 
-        return $report !== null ? (string) $report->quantity : '';
+        if ($report === null) {
+            return '';
+        }
+
+        return $report->wasCounted() ? (string) $report->quantity : self::NOT_PERFORMED_LABEL;
     }
 
     private function formatDateTime(mixed $value): string

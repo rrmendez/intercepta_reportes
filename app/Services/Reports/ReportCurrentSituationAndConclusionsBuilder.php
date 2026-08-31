@@ -103,18 +103,23 @@ final class ReportCurrentSituationAndConclusionsBuilder
     }
 
     /**
+     * La linea base es el primer dia con al menos un conteo real: un dia en el
+     * que no se pudo contar nada no sirve como referencia de poblacion inicial.
+     *
      * @param  Collection<int, VisitReport>  $visitReports
      * @return Collection<int, VisitReport>
      */
     private function firstVisitDayReports(Collection $visitReports): Collection
     {
-        $dayKey = $this->sortedVisitDayKeys($visitReports)[0] ?? null;
+        foreach ($this->sortedVisitDayKeys($visitReports) as $dayKey) {
+            $dayReports = $this->reportsForDay($visitReports, $dayKey);
 
-        if ($dayKey === null) {
-            return collect();
+            if ($this->onlyCounted($dayReports)->isNotEmpty()) {
+                return $dayReports;
+            }
         }
 
-        return $this->reportsForDay($visitReports, $dayKey);
+        return collect();
     }
 
     /**
@@ -167,7 +172,18 @@ final class ReportCurrentSituationAndConclusionsBuilder
      */
     private function totalQuantity(Collection $visitReports): int
     {
-        return (int) $visitReports->sum('quantity');
+        return (int) $this->onlyCounted($visitReports)->sum('quantity');
+    }
+
+    /**
+     * Los conteos no realizados no aportan cero: quedan fuera de todo agregado.
+     *
+     * @param  Collection<int, VisitReport>  $visitReports
+     * @return Collection<int, VisitReport>
+     */
+    private function onlyCounted(Collection $visitReports): Collection
+    {
+        return $visitReports->filter(fn (VisitReport $report): bool => $report->wasCounted());
     }
 
     /**
@@ -292,7 +308,7 @@ final class ReportCurrentSituationAndConclusionsBuilder
      */
     private function quantitiesByBirdType(Collection $visitReports): Collection
     {
-        return $visitReports
+        return $this->onlyCounted($visitReports)
             ->groupBy('bird_type_id')
             ->sortKeys()
             ->map(function (Collection $group): ?array {

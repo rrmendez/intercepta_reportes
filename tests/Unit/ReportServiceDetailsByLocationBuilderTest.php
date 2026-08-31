@@ -10,6 +10,7 @@ use App\Models\Location;
 use App\Models\Visit;
 use App\Models\VisitReport;
 use App\Services\Reports\ReportServiceDetailsByLocationBuilder;
+use App\VisitCountStatus;
 use Database\Seeders\BirdTypeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
@@ -305,11 +306,81 @@ it('falls back to the visit report observation when the visit has no observation
 /**
  * @return Collection<int, VisitReport>
  */
+it('reports abundance as not performed when the sector could not be counted', function (): void {
+    $client = Client::query()->create([
+        'name' => 'Cliente Cerrado',
+        'active' => true,
+        'import_mode' => ClientImportMode::SingleSectorSingleBird,
+    ]);
+
+    $location = Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Planta central',
+        'active' => true,
+    ]);
+
+    $birdType = BirdType::query()->where('slug', 'palomas')->firstOrFail();
+
+    $visitReports = seedVisitReports($client, $location, $birdType, quantity: null);
+
+    $result = app(ReportServiceDetailsByLocationBuilder::class)->build($client, $visitReports);
+
+    expect($result['sections'][0]['abundancia'])->toBe('Sin conteo (local cerrado o sin acceso)');
+});
+
+it('lists the bird types that could not be counted alongside the ones that were', function (): void {
+    $client = Client::query()->create([
+        'name' => 'Cliente Mixto',
+        'active' => true,
+        'import_mode' => ClientImportMode::SingleSectorMultiBird,
+    ]);
+
+    $location = Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Planta central',
+        'active' => true,
+    ]);
+
+    $palomas = BirdType::query()->where('slug', 'palomas')->firstOrFail();
+    $employee = Employee::query()->firstOrCreate(['name' => 'Técnico Demo'], ['active' => true]);
+    $cotorras = BirdType::query()->where('slug', 'cotorras')->firstOrFail();
+
+    $visit = Visit::query()->create([
+        'client_id' => $client->id,
+        'employee_id' => $employee->id,
+        'date_init' => '2026-03-10 16:30:00',
+        'date_end' => '2026-03-10 17:30:00',
+    ]);
+
+    VisitReport::query()->create([
+        'visit_id' => $visit->id,
+        'location_id' => $location->id,
+        'bird_type_id' => $palomas->id,
+        'quantity' => 6,
+    ]);
+
+    VisitReport::query()->create([
+        'visit_id' => $visit->id,
+        'location_id' => $location->id,
+        'bird_type_id' => $cotorras->id,
+        'quantity' => null,
+        'count_status' => VisitCountStatus::NotPerformed,
+    ]);
+
+    $visitReports = VisitReport::query()->with(['visit', 'location', 'birdType'])->get();
+
+    $result = app(ReportServiceDetailsByLocationBuilder::class)->build($client, $visitReports);
+
+    expect($result['sections'][0]['abundancia'])->toContain('6 ')
+        ->and($result['sections'][0]['abundancia'])->toContain('Sin conteo (local cerrado o sin acceso): ')
+        ->and($result['sections'][0]['abundancia'])->not->toContain('0 ');
+});
+
 function seedVisitReports(
     Client $client,
     Location $location,
     BirdType $birdType,
-    int $quantity,
+    ?int $quantity,
     string $date = '2026-03-10',
 ): Collection {
     $employee = Employee::query()->firstOrCreate(
@@ -331,6 +402,9 @@ function seedVisitReports(
             'location_id' => $location->id,
             'bird_type_id' => $birdType->id,
             'quantity' => $quantity,
+            'count_status' => $quantity === null
+                ? VisitCountStatus::NotPerformed
+                : VisitCountStatus::Counted,
         ])->id)
         ->with(['visit', 'location', 'birdType'])
         ->get();

@@ -115,6 +115,12 @@
         $hasData = collect($charts)->contains(
             fn (array $chart): bool => ! empty($chart['datasets'] ?? []),
         );
+        $hasGaps = collect($charts)->contains(
+            fn (array $chart): bool => collect($chart['datasets'] ?? [])->contains(
+                fn (array $dataset): bool => in_array(null, $dataset['data'] ?? [], true),
+            ),
+        );
+        $texto_graficos_salto = $texto_graficos_salto ?? 'Los cortes en las líneas corresponden a visitas sin conteo posible (por ejemplo, local cerrado).';
 
         $abundancia_ultimo_dia_sector = $abundancia_ultimo_dia_sector ?? '—';
 
@@ -390,6 +396,13 @@ html, body { margin: 0; background: #ffffff; }
         width: 100%;
         max-width: 100%;
         height: auto;
+    }
+
+    .report-fauna-evolution-page__gap-note {
+        margin: 4mm 0 0;
+        color: #6b7280;
+        font-size: 9pt;
+        font-style: italic;
     }
 
     .report-fauna-evolution-page__empty {

@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\Visit;
 use App\Models\VisitReport;
 use App\Services\VisitSpreadsheet\VisitSpreadsheetQuantityColumns;
+use App\VisitCountStatus;
 use App\VisitStatus;
 use Database\Seeders\BirdTypeSeeder;
 use Database\Seeders\RoleSeeder;
@@ -95,6 +96,74 @@ it('lists visits for client and month and updates a quantity cell', function ():
 
     expect($visitReport)->not->toBeNull()
         ->and((int) $visitReport->quantity)->toBe(12);
+});
+
+it('marks a quantity cell as not performed with the -1 sentinel and reopens it with a number', function (): void {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $palomas = BirdType::query()->where('name', 'Palomas')->firstOrFail();
+
+    $client = Client::query()->create([
+        'name' => 'Cliente Sin Conteo',
+        'active' => true,
+        'import_mode' => ClientImportMode::MultiSectorSingleBird,
+    ]);
+
+    $location = Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Deposito',
+        'active' => true,
+    ]);
+
+    $employee = Employee::query()->create([
+        'name' => 'Operario Hoja',
+        'active' => true,
+    ]);
+
+    $visit = Visit::query()->create([
+        'client_id' => $client->id,
+        'employee_id' => $employee->id,
+        'date_init' => '2026-05-10 08:00:00',
+        'date_end' => null,
+        'observation' => null,
+        'status' => VisitStatus::Completed,
+    ]);
+
+    VisitReport::query()->create([
+        'visit_id' => $visit->id,
+        'location_id' => $location->id,
+        'bird_type_id' => $palomas->id,
+        'quantity' => 5,
+    ]);
+
+    $quantityColumnKey = collect(app(VisitSpreadsheetQuantityColumns::class)->forClient($client))
+        ->firstWhere(fn (array $spec): bool => (int) $spec['location_id'] === (int) $location->id
+            && (int) $spec['bird_type_id'] === (int) $palomas->id)['key'] ?? null;
+
+    $component = Livewire::actingAs($user)
+        ->test(ListVisitsSpreadsheet::class)
+        ->set('tableFilters', [
+            'spreadsheet' => [
+                'client_id' => (string) $client->id,
+                'mode' => 'custom_range',
+                'date_from' => '2026-05-01',
+                'date_until' => '2026-05-31',
+            ],
+        ])
+        ->call('updateTableColumnState', $quantityColumnKey, (string) $visit->getKey(), '-1');
+
+    $visitReport = VisitReport::query()->where('visit_id', $visit->id)->firstOrFail();
+
+    expect($visitReport->count_status)->toBe(VisitCountStatus::NotPerformed)
+        ->and($visitReport->quantity)->toBeNull();
+
+    $component->call('updateTableColumnState', $quantityColumnKey, (string) $visit->getKey(), '7');
+
+    $visitReport = $visitReport->fresh();
+
+    expect($visitReport->count_status)->toBe(VisitCountStatus::Counted)
+        ->and($visitReport->quantity)->toBe(7);
 });
 
 it('updates observation metric cells and recalculates them when the observation cell changes', function (): void {
