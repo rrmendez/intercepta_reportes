@@ -10,6 +10,7 @@ use App\Models\VisitReport;
 use App\Services\VisitObservations\VisitObservationMetricsExtractor;
 use App\VisitCountStatus;
 use Carbon\Carbon;
+use Closure;
 use Filament\Tables\Columns\Column;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\TextInputColumn;
@@ -19,7 +20,7 @@ final class VisitSpreadsheetColumns
 {
     private const string SPREADSHEET_DATETIME_FORMAT = 'd/m/Y H:i';
 
-    private const string NOT_PERFORMED_HINT = 'Escribi -1 si no se pudo hacer el conteo (local cerrado o sin acceso).';
+    private const string NOT_PERFORMED_HINT = 'Escribi -1 o X si no se pudo hacer el conteo (local cerrado o sin acceso).';
 
     /**
      * @return array<Column>
@@ -59,9 +60,8 @@ final class VisitSpreadsheetColumns
 
             $quantityColumns[] = TextInputColumn::make($spec['key'])
                 ->label($this->label((string) $spec['label']))
-                ->type('number')
                 ->tooltip(self::NOT_PERFORMED_HINT)
-                ->rules(['nullable', 'integer', 'min:'.VisitCountStatus::NOT_PERFORMED_SENTINEL])
+                ->rules(['nullable', $this->quantityCellRule()])
                 ->getStateUsing(function (Visit $visit) use ($locationId, $birdTypeId): string {
                     $report = $visit->visitReports->first(
                         fn (VisitReport $r): bool => (int) $r->location_id === $locationId && (int) $r->bird_type_id === $birdTypeId
@@ -97,7 +97,7 @@ final class VisitSpreadsheetColumns
                         return $report !== null ? '0' : '';
                     }
 
-                    $notPerformed = (int) $trimmed === VisitCountStatus::NOT_PERFORMED_SENTINEL;
+                    $notPerformed = VisitCountStatus::isNotPerformedMarker($trimmed);
                     $qty = $notPerformed ? null : max(0, (int) $trimmed);
 
                     if ($report === null) {
@@ -226,5 +226,24 @@ final class VisitSpreadsheetColumns
         }
 
         return app(VisitSpreadsheetQuantityColumns::class)->forClient($client);
+    }
+
+    /**
+     * Acepta un entero entre 0 y el tope de la columna, o una marca de conteo
+     * no realizado (`-1`, `x`, `X`), con la misma definicion que los importadores.
+     */
+    private function quantityCellRule(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail): void {
+            if (VisitCountStatus::isNotPerformedMarker($value)) {
+                return;
+            }
+
+            $trimmed = is_scalar($value) ? trim((string) $value) : '';
+
+            if (filter_var($trimmed, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => VisitReport::MAX_QUANTITY]]) === false) {
+                $fail('La cantidad debe ser un entero entre 0 y '.VisitReport::MAX_QUANTITY.', o -1 / X si no se pudo contar.');
+            }
+        };
     }
 }

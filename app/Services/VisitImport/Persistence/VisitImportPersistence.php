@@ -245,7 +245,7 @@ class VisitImportPersistence
             'status' => ['nullable', 'string', 'max:255'],
             'location_name' => ['required', 'string', 'max:255'],
             'bird_type_name' => ['required', 'string', 'max:255'],
-            'quantity' => ['required', 'integer', 'min:0'],
+            'quantity' => ['required', 'integer', 'min:0', 'max:'.VisitReport::MAX_QUANTITY],
             'observation' => ['nullable', 'string'],
             'visit_observation' => ['nullable', 'string'],
         ]);
@@ -254,7 +254,7 @@ class VisitImportPersistence
     /**
      * Mapea la fila cruda y normaliza la cantidad antes de validarla.
      *
-     * El centinela `-1` marca un conteo que no pudo realizarse (local cerrado);
+     * El centinela `-1` (o la letra `x`/`X`) marca un conteo que no pudo realizarse (local cerrado);
      * se guarda como `count_status = not_performed` con cantidad nula. Cualquier
      * otro negativo se trata como error de carga y se convierte a 0.
      *
@@ -268,18 +268,18 @@ class VisitImportPersistence
         $warnings = [];
         $quantity = $data['quantity'] ?? '';
 
-        if (! $this->isWholeNumber($quantity) || (int) $quantity >= 0) {
+        if (VisitCountStatus::isNotPerformedMarker($quantity)) {
+            $warnings[] = 'Fila '.$rowNumber.': conteo no realizado (local cerrado o sin acceso); se registrara sin cantidad.';
+            $data['count_status'] = VisitCountStatus::NotPerformed->value;
+            $data['quantity'] = '0';
+
             return [
                 'data' => $data,
                 'warnings' => $warnings,
             ];
         }
 
-        if ((int) $quantity === VisitCountStatus::NOT_PERFORMED_SENTINEL) {
-            $warnings[] = 'Fila '.$rowNumber.': conteo no realizado (local cerrado o sin acceso); se registrara sin cantidad.';
-            $data['count_status'] = VisitCountStatus::NotPerformed->value;
-            $data['quantity'] = '0';
-
+        if (! $this->isWholeNumber($quantity) || (int) $quantity >= 0) {
             return [
                 'data' => $data,
                 'warnings' => $warnings,

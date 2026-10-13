@@ -98,7 +98,7 @@ it('lists visits for client and month and updates a quantity cell', function ():
         ->and((int) $visitReport->quantity)->toBe(12);
 });
 
-it('marks a quantity cell as not performed with the -1 sentinel and reopens it with a number', function (): void {
+it('marks a quantity cell as not performed with a not-performed marker and reopens it with a number', function (string $marker): void {
     $user = User::factory()->create();
     $user->assignRole('Admin');
 
@@ -151,7 +151,7 @@ it('marks a quantity cell as not performed with the -1 sentinel and reopens it w
                 'date_until' => '2026-05-31',
             ],
         ])
-        ->call('updateTableColumnState', $quantityColumnKey, (string) $visit->getKey(), '-1');
+        ->call('updateTableColumnState', $quantityColumnKey, (string) $visit->getKey(), $marker);
 
     $visitReport = VisitReport::query()->where('visit_id', $visit->id)->firstOrFail();
 
@@ -164,7 +164,68 @@ it('marks a quantity cell as not performed with the -1 sentinel and reopens it w
 
     expect($visitReport->count_status)->toBe(VisitCountStatus::Counted)
         ->and($visitReport->quantity)->toBe(7);
-});
+})->with(['-1', 'x', 'X']);
+
+it('rejects quantity cells outside the column range without touching the count', function (string $invalidValue): void {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+
+    $palomas = BirdType::query()->where('name', 'Palomas')->firstOrFail();
+
+    $client = Client::query()->create([
+        'name' => 'Cliente Sin Conteo',
+        'active' => true,
+        'import_mode' => ClientImportMode::MultiSectorSingleBird,
+    ]);
+
+    $location = Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Deposito',
+        'active' => true,
+    ]);
+
+    $employee = Employee::query()->create([
+        'name' => 'Operario Hoja',
+        'active' => true,
+    ]);
+
+    $visit = Visit::query()->create([
+        'client_id' => $client->id,
+        'employee_id' => $employee->id,
+        'date_init' => '2026-05-10 08:00:00',
+        'date_end' => null,
+        'observation' => null,
+        'status' => VisitStatus::Completed,
+    ]);
+
+    VisitReport::query()->create([
+        'visit_id' => $visit->id,
+        'location_id' => $location->id,
+        'bird_type_id' => $palomas->id,
+        'quantity' => 5,
+    ]);
+
+    $quantityColumnKey = collect(app(VisitSpreadsheetQuantityColumns::class)->forClient($client))
+        ->firstWhere(fn (array $spec): bool => (int) $spec['location_id'] === (int) $location->id
+            && (int) $spec['bird_type_id'] === (int) $palomas->id)['key'] ?? null;
+
+    Livewire::actingAs($user)
+        ->test(ListVisitsSpreadsheet::class)
+        ->set('tableFilters', [
+            'spreadsheet' => [
+                'client_id' => (string) $client->id,
+                'mode' => 'custom_range',
+                'date_from' => '2026-05-01',
+                'date_until' => '2026-05-31',
+            ],
+        ])
+        ->call('updateTableColumnState', $quantityColumnKey, (string) $visit->getKey(), $invalidValue);
+
+    $visitReport = VisitReport::query()->where('visit_id', $visit->id)->firstOrFail();
+
+    expect($visitReport->count_status)->toBe(VisitCountStatus::Counted)
+        ->and($visitReport->quantity)->toBe(5);
+})->with(['99999999999', '-5', '2.5', 'abc']);
 
 it('updates observation metric cells and recalculates them when the observation cell changes', function (): void {
     $user = User::factory()->create();

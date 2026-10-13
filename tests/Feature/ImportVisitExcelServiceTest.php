@@ -1282,7 +1282,7 @@ it('persists visit import log with user and file metadata', function () {
     }
 });
 
-it('surfaces preview errors for invalid integer quantities', function () {
+it('surfaces preview errors for invalid integer quantities', function (string $invalidQuantity) {
     $client = Client::query()->create([
         'name' => 'Cliente Invalido',
         'active' => true,
@@ -1302,7 +1302,7 @@ it('surfaces preview errors for invalid integer quantities', function () {
 
     $csvPath = createTempCsv(implode("\n", [
         'Fecha,Entrada,Salida,Jumbos,Conversiones,Observaciones,Nombre de usuario',
-        '2026-04-10,08:00,09:30,x,2,Sin novedades,Marta',
+        '2026-04-10,08:00,09:30,'.$invalidQuantity.',2,Sin novedades,Marta',
     ]));
 
     try {
@@ -1313,9 +1313,9 @@ it('surfaces preview errors for invalid integer quantities', function () {
     } finally {
         @unlink($csvPath);
     }
-});
+})->with(['abc', '99999999999']);
 
-it('marks the sentinel -1 as a count that could not be performed', function () {
+it('marks a not-performed marker as a count that could not be performed', function (string $marker) {
     $client = Client::query()->create([
         'name' => 'Cliente Sin Conteo',
         'active' => true,
@@ -1331,7 +1331,7 @@ it('marks the sentinel -1 as a count that could not be performed', function () {
 
     $csvPath = createTempCsv(implode("\n", [
         'Fecha,Entrada,Salida,Jumbos,Conversiones,Observaciones,Nombre de usuario',
-        '2026-04-10,08:00,09:30,-1,2,Local cerrado,Marta',
+        '2026-04-10,08:00,09:30,'.$marker.',2,Local cerrado,Marta',
     ]));
 
     try {
@@ -1363,7 +1363,7 @@ it('marks the sentinel -1 as a count that could not be performed', function () {
     } finally {
         @unlink($csvPath);
     }
-});
+})->with(['-1', 'x', 'X']);
 
 it('converts negative quantities other than the sentinel to zero with a warning', function () {
     $client = Client::query()->create([

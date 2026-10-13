@@ -159,7 +159,7 @@ it('imports historic visits when execute mode is used', function () {
     }
 });
 
-it('imports the sentinel -1 as a count that could not be performed', function () {
+it('imports a not-performed marker as a count that could not be performed', function (int|string $marker) {
     $client = Client::query()->create([
         'name' => 'APM',
         'active' => true,
@@ -173,7 +173,7 @@ it('imports the sentinel -1 as a count that could not be performed', function ()
 
     $directory = createTempHistoricDirectory([
         'APM.xls' => [
-            [41219, -1],
+            [41219, $marker],
             [41221, 40],
         ],
     ]);
@@ -192,7 +192,7 @@ it('imports the sentinel -1 as a count that could not be performed', function ()
     } finally {
         deleteDirectoryRecursive($directory);
     }
-});
+})->with([-1, 'x', 'X']);
 
 it('deletes previous historic imports before re-importing', function () {
     $client = Client::query()->create([

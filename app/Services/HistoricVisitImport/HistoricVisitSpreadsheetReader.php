@@ -76,7 +76,9 @@ final class HistoricVisitSpreadsheetReader
                     continue;
                 }
 
-                $quantities[$columnIndex] = (int) round((float) $rawQuantity);
+                $quantities[$columnIndex] = VisitCountStatus::isNotPerformedMarker($rawQuantity)
+                    ? VisitCountStatus::NOT_PERFORMED_SENTINEL
+                    : (int) round((float) $rawQuantity);
             }
 
             if ($quantities === []) {
@@ -140,7 +142,7 @@ final class HistoricVisitSpreadsheetReader
         for ($columnIndex = 2; $columnIndex <= $highestColumn; $columnIndex++) {
             $value = $this->cellRawValue($sheet, $columnIndex, 1);
 
-            if (is_string($value) && trim($value) !== '' && ! $this->isNumericCellValue(trim($value))) {
+            if (is_string($value) && trim($value) !== '' && ! $this->isNumericCellValue(trim($value)) && ! VisitCountStatus::isNotPerformedMarker($value)) {
                 return true;
             }
         }
@@ -221,10 +223,14 @@ final class HistoricVisitSpreadsheetReader
     }
 
     /**
-     * Acepta enteros no negativos y el centinela de conteo no realizado.
+     * Acepta enteros no negativos y las marcas de conteo no realizado (`-1`, `x`).
      */
     private function isQuantityCellValue(mixed $value): bool
     {
+        if (VisitCountStatus::isNotPerformedMarker($value)) {
+            return true;
+        }
+
         if (! $this->isNumericCellValue($value)) {
             return false;
         }
@@ -235,7 +241,7 @@ final class HistoricVisitSpreadsheetReader
             return false;
         }
 
-        return $numeric >= 0 || (int) round($numeric) === VisitCountStatus::NOT_PERFORMED_SENTINEL;
+        return $numeric >= 0;
     }
 
     private function normalizeHeaderToken(string $value): string

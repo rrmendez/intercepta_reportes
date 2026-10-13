@@ -9,6 +9,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class VisitReport extends Model
 {
+    /**
+     * Tope de la columna `quantity` (unsigned int de MySQL).
+     */
+    public const int MAX_QUANTITY = 4_294_967_295;
+
     protected $fillable = [
         'visit_id',
         'location_id',

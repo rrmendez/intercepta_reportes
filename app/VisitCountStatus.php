@@ -18,6 +18,30 @@ enum VisitCountStatus: string
      */
     public const int NOT_PERFORMED_SENTINEL = -1;
 
+    /**
+     * Marca alternativa al centinela numerico, aceptada en mayuscula o minuscula.
+     */
+    public const string NOT_PERFORMED_LETTER = 'x';
+
+    /**
+     * Indica si un valor cargado en una celda de cantidad marca un conteo no
+     * realizado: el centinela `-1` o la letra `x`/`X`.
+     */
+    public static function isNotPerformedMarker(mixed $value): bool
+    {
+        if (! is_scalar($value)) {
+            return false;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+
+        if ($normalized === self::NOT_PERFORMED_LETTER) {
+            return true;
+        }
+
+        return is_numeric($normalized) && (float) $normalized === (float) self::NOT_PERFORMED_SENTINEL;
+    }
+
     public function label(): string
     {
         return match ($this) {
