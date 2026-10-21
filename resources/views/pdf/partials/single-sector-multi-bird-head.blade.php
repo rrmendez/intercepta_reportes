@@ -69,6 +69,22 @@
         $data = $situacion_actual_y_conclusiones ?? $report_current_situation_and_conclusions ?? [];
         $populationEntries = $data['population_entries'] ?? [];
         $reductionPercentage = $data['reduction_percentage'] ?? null;
+        $falconryCaptures = $data['falconry_captures'] ?? [];
+        $trapCaptures = $data['trap_captures'] ?? [];
+        $nestsRemoved = (int) ($data['nests_removed'] ?? 0);
+        $capturasTotales = (int) ($data['captures_total'] ?? 0);
+        $formatCaptureLine = static function (array $captures): string {
+            $parts = collect($captures)->map(fn (array $capture): string => e(($capture['quantity'] ?? 0).' '.($capture['name'] ?? ''))
+                .(empty($capture['scientific_name']) ? '' : ' (<em>'.e($capture['scientific_name']).'</em>)'));
+
+            return match (true) {
+                $parts->isEmpty() => '—',
+                $parts->count() === 1 => $parts->first(),
+                default => $parts->slice(0, -1)->implode(', ').' y '.$parts->last(),
+            };
+        };
+        $capturasCetreriaLinea = $formatCaptureLine($falconryCaptures);
+        $capturasTrampasLinea = $formatCaptureLine($trapCaptures);
 
         $signatureRelativePath = 'images/firma_manuel.jpeg';
         $signatureSrc = \App\Services\ReportPdfPublicImageDataUri::fromRelativePublicPath($signatureRelativePath)

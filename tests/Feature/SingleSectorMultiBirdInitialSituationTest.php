@@ -190,8 +190,8 @@ it('renders current situation with population by bird type and reduction percent
         ->and($html)->toContain('Población al último día de servicio:')
         ->and($html)->toContain('0 Cotorras (<em>Myiopsitta monachus</em>), 3 Palomas domésticas (<em>Columba livia</em>) y 0 Tordos (<em>Molothrus bonariensis</em>).')
         ->and($html)->toContain('La población de aves ha disminuido en un 97.50%')
-        ->and($html)->toContain('Capturas con cetrería o métodos alternativos: 0 Palomas domésticas (<em>Columba livia</em>)')
-        ->and($html)->toContain('Capturas con trampas: 0 Palomas domésticas (<em>Columba livia</em>).')
+        ->and($html)->toContain('Capturas con cetrería o métodos alternativos: 0 Cotorras (<em>Myiopsitta monachus</em>), 0 Palomas domésticas (<em>Columba livia</em>) y 0 Tordos (<em>Molothrus bonariensis</em>)</p>')
+        ->and($html)->toContain('Capturas con trampas: 0 Cotorras (<em>Myiopsitta monachus</em>), 0 Palomas domésticas (<em>Columba livia</em>) y 0 Tordos (<em>Molothrus bonariensis</em>).</p>')
         ->and($html)->toContain('Se retiraron 0 nidos.')
         ->and($html)->toContain('plan de trabajo implantado está siendo exitoso');
 });

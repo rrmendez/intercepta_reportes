@@ -60,6 +60,43 @@ it('renders the single-sector service details page with fixed labels and dynamic
         ->and($html)->not->toContain('@foreach');
 });
 
+it('renders captures and removed nests from visit observations', function (ClientImportMode $importMode): void {
+    $client = Client::query()->create([
+        'name' => 'Ducsa',
+        'active' => true,
+        'import_mode' => $importMode,
+    ]);
+
+    $location = Location::query()->create([
+        'client_id' => $client->id,
+        'name' => 'Ducsa',
+        'active' => true,
+    ]);
+
+    $birdType = BirdType::query()->where('slug', 'palomas')->firstOrFail();
+
+    $employee = Employee::query()->create([
+        'name' => 'Tecnico',
+        'active' => true,
+    ]);
+
+    seedCurrentSituationVisitReports($client, $location, $birdType, $employee, '2026-03-11', 2, "Se captura una paloma\nCon cetreria");
+    seedCurrentSituationVisitReports($client, $location, $birdType, $employee, '2026-03-17', 0, "Se captura una paloma\nSe retira un nido");
+    seedCurrentSituationVisitReports($client, $location, $birdType, $employee, '2026-03-30', 1, 'Se captura 1 paloma');
+
+    $html = renderSingleSectorSingleBirdTemplateHtml($client);
+
+    expect($html)->toMatch('/<td>Capturas<\/td>\s*<td>3<\/td>/')
+        ->and($html)->toMatch('/<td>Nidos retirados<\/td>\s*<td>1<\/td>/')
+        ->and($html)->toMatch('/Capturas con cetrería o métodos alternativos:\s*3 Palomas domésticas/')
+        ->and($html)->toContain('Se retiraron 1 nidos.');
+})->with([
+    'single sector single bird' => ClientImportMode::SingleSectorSingleBird,
+    'single sector multi bird' => ClientImportMode::SingleSectorMultiBird,
+    'multi sector single bird' => ClientImportMode::MultiSectorSingleBird,
+    'multi sector multi bird' => ClientImportMode::MultiSectorMultiBird,
+]);
+
 it('includes the single-sector service details page in the single sector single bird template', function (): void {
     $source = file_get_contents(resource_path('pdf-report-templates/single_sector_single_bird.blade.php'));
 

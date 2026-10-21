@@ -61,7 +61,8 @@ final class ReportCurrentSituationAndConclusionsBuilder
      *     reduction_percentage: string|null,
      *     falconry_captures: list<array{quantity: int, name: string, scientific_name: string}>,
      *     trap_captures: list<array{quantity: int, name: string, scientific_name: string}>,
-     *     nests_removed: int
+     *     nests_removed: int,
+     *     captures_total: int
      * }
      */
     public function build(Collection $periodVisitReports, Collection $historicalVisitReports): array
@@ -85,6 +86,7 @@ final class ReportCurrentSituationAndConclusionsBuilder
             'falconry_captures' => $this->captureEntries($periodVisitReports, $birdTypes, falconry: true),
             'trap_captures' => $this->captureEntries($periodVisitReports, $birdTypes, falconry: false),
             'nests_removed' => $this->nestsRemovedCount($periodVisitReports),
+            'captures_total' => $this->capturesTotalCount($periodVisitReports),
         ];
     }
 
@@ -278,6 +280,22 @@ final class ReportCurrentSituationAndConclusionsBuilder
 
         foreach ($periodVisitReports->groupBy('visit_id') as $visitGroup) {
             $total += $this->observationMetricsResolver->resolve($visitGroup)->nestsRemoved;
+        }
+
+        return $total;
+    }
+
+    /**
+     * @param  Collection<int, VisitReport>  $periodVisitReports
+     */
+    private function capturesTotalCount(Collection $periodVisitReports): int
+    {
+        $total = 0;
+
+        foreach ($periodVisitReports->groupBy('visit_id') as $visitGroup) {
+            $metrics = $this->observationMetricsResolver->resolve($visitGroup);
+
+            $total += $metrics->capturesFalconry + $metrics->capturesTrap;
         }
 
         return $total;

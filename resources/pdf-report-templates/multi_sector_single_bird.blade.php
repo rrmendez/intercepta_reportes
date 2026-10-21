@@ -242,11 +242,11 @@
             <p>La población de aves ha disminuido en un {{ $reductionPercentage }}%.</p>
         @endif
 
-        <p>Capturas con cetrería o métodos alternativos: 0 Palomas domésticas (<em>Columba livia</em>)</p>
+        <p>Capturas con cetrería o métodos alternativos: {!! $capturasCetreriaLinea !!}</p>
 
-        <p>Capturas con trampas: 0 Palomas domésticas (<em>Columba livia</em>).</p>
+        <p>Capturas con trampas: {!! $capturasTrampasLinea !!}.</p>
 
-        <p>Se retiraron 0 nidos.</p>
+        <p>Se retiraron {{ $nestsRemoved }} nidos.</p>
 
         <div class="report-current-situation-and-conclusions-page__footer">
             <div class="report-current-situation-and-conclusions-page__conclusion">
