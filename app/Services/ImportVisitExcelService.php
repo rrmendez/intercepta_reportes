@@ -32,6 +32,16 @@ class ImportVisitExcelService
     ];
 
     /**
+     * @var array<string, string>
+     */
+    private const COMPACT_COLUMN_LABELS = [
+        'fecha' => 'Fecha',
+        'salida' => 'Salida',
+        'observaciones' => 'Observaciones',
+        'nombre_de_usuario' => 'Nombre de usuario',
+    ];
+
+    /**
      * @var array<int, string>
      */
     private const ENTRY_COLUMN_CANDIDATES = [
@@ -403,8 +413,17 @@ class ImportVisitExcelService
             return null;
         }
 
-        if (! $this->containsColumns($headers, self::COMPACT_FIXED_COLUMNS)) {
-            return null;
+        $missingFixedColumns = array_values(array_diff(self::COMPACT_FIXED_COLUMNS, $headers));
+
+        if ($missingFixedColumns !== []) {
+            throw ValidationException::withMessages([
+                'file' => [sprintf(
+                    'Formato compacto invalido: falta la columna %s.',
+                    collect($missingFixedColumns)
+                        ->map(fn (string $column): string => '"'.(self::COMPACT_COLUMN_LABELS[$column] ?? $column).'"')
+                        ->implode(', '),
+                )],
+            ]);
         }
 
         $salidaIndex = array_search('salida', $headers, true);

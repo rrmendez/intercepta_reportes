@@ -182,6 +182,26 @@ it('fails compact multi-location import without client when provision is false',
     }
 });
 
+it('reports the missing nombre de usuario column for compact files', function () {
+    Client::query()->create([
+        'name' => 'Joyson',
+        'active' => true,
+    ]);
+
+    $csvPath = storage_path('framework/testing/Joyson_Constancia_de_Servicio_20260705-'.uniqid('', true).'.csv');
+    file_put_contents($csvPath, implode("\n", [
+        'Fecha,Entrada,Salida,Interior,Exterior,Observaciones',
+        '2026-07-05,20:00,21:00,0,10,Sin novedades',
+    ]));
+
+    try {
+        expect(fn () => app(ImportVisitExcelService::class)->preview($csvPath))
+            ->toThrow(ValidationException::class, 'Formato compacto invalido: falta la columna "Nombre de usuario".');
+    } finally {
+        @unlink($csvPath);
+    }
+});
+
 it('creates client and section locations from compact csv when provision is true', function () {
     $csvPath = storage_path('framework/testing/ProvTest_Corp_Constancia_de_Servicio_20260406-'.uniqid('', true).'.csv');
     file_put_contents($csvPath, implode("\n", [
